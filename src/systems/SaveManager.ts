@@ -4,17 +4,18 @@ const SAVE_KEY = 'wasteland_kings_save_v2';
 const UUID_KEY = 'wasteland_kings_uuid';
 const API_BASE_KEY = 'wasteland_kings_api_base';
 
-// Default API base — empty string means same-origin (useful when worker proxies static assets)
-// Override by setting localStorage.wasteland_kings_api_base = "https://your-worker.workers.dev"
+// Default API base — override via localStorage.wasteland_kings_api_base
+const DEFAULT_API_BASE = 'https://wasteland-kings-api.skdev-371.workers.dev';
+
 function getApiBase(): string {
   try {
-    return localStorage.getItem(API_BASE_KEY) || '';
-  } catch { return ''; }
+    return localStorage.getItem(API_BASE_KEY) || DEFAULT_API_BASE;
+  } catch { return DEFAULT_API_BASE; }
 }
 
 function apiUrl(path: string): string {
   const base = getApiBase();
-  return base ? `${base.replace(/\/$/, '')}${path}` : path;
+  return `${base.replace(/\/$/, '')}${path}`;
 }
 
 function generateUUID(): string {
@@ -27,7 +28,6 @@ function generateUUID(): string {
 export class SaveManager {
   private data: SaveData;
   private uuid: string;
-  private syncPending = false;
 
   constructor() {
     this.uuid = this.getOrCreateUUID();
