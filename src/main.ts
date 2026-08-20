@@ -26,7 +26,7 @@ const config: Phaser.Types.Core.GameConfig = {
     }
   },
   scene: [BootScene, PreloadScene, TitleScene, GameScene, PauseScene, GameOverScene, ShopScene, SettingsScene],
-  pixelArt: false,
+  pixelArt: true,
   roundPixels: true
 };
 

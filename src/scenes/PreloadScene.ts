@@ -5,53 +5,40 @@ export class PreloadScene extends Scene {
     super({ key: 'PreloadScene' });
   }
 
-  create(): void {
-    this.generateTextures();
+  preload(): void {
+    // ── Real pixel art assets ──
+    this.load.image('title_bg', 'assets/title_bg.png');
+    this.load.image('ground_tile', 'assets/ground_tile.png');
 
+    this.load.image('player_scrapper', 'assets/player_scrapper.png');
+    this.load.image('player_speedster', 'assets/player_speedster.png');
+    this.load.image('player_juggernaut', 'assets/player_juggernaut.png');
+    this.load.image('player_engineer', 'assets/player_engineer.png');
+
+    this.load.image('boss', 'assets/boss_warlord.png');
+
+    this.load.image('enemy_grunt', 'assets/enemy_grunt.png');
+    this.load.image('enemy_runner', 'assets/enemy_runner.png');
+    this.load.image('enemy_tank', 'assets/enemy_tank.png');
+    this.load.image('enemy_ranged', 'assets/enemy_ranged.png');
+
+    // ── Procedural fallback textures (no art yet) ──
+    this.generateTextures();
+  }
+
+  create(): void {
     this.cameras.main.setBackgroundColor('#0a0a0a');
-    this.add.text(640, 360, 'GENERATING ASSETS...', {
+    this.add.text(640, 360, 'LOADING...', {
       fontSize: '24px', fontFamily: 'Courier New', color: '#ff6600'
     }).setOrigin(0.5);
 
-    this.time.delayedCall(800, () => {
+    this.time.delayedCall(400, () => {
       this.scene.start('TitleScene');
     });
   }
 
   private generateTextures(): void {
     const g = this.make.graphics({ x: 0, y: 0 });
-
-    // Player
-    g.clear();
-    g.fillStyle(0xCD853F);
-    g.fillTriangle(16, 0, 0, 32, 32, 32);
-    g.fillStyle(0xFF6600);
-    g.fillRect(10, 20, 12, 8);
-    g.generateTexture('player', 32, 32);
-
-    // Speedster
-    g.clear();
-    g.fillStyle(0x00CED1);
-    g.fillTriangle(16, 0, 0, 32, 32, 32);
-    g.fillStyle(0x00FFFF);
-    g.fillRect(10, 20, 12, 8);
-    g.generateTexture('player_speedster', 32, 32);
-
-    // Juggernaut
-    g.clear();
-    g.fillStyle(0xB22222);
-    g.fillTriangle(16, 0, 0, 32, 32, 32);
-    g.fillStyle(0x8B0000);
-    g.fillRect(10, 20, 12, 8);
-    g.generateTexture('player_juggernaut', 32, 32);
-
-    // Engineer
-    g.clear();
-    g.fillStyle(0x7B68EE);
-    g.fillTriangle(16, 0, 0, 32, 32, 32);
-    g.fillStyle(0x9370DB);
-    g.fillRect(10, 20, 12, 8);
-    g.generateTexture('player_engineer', 32, 32);
 
     // Bullet
     g.clear();
@@ -96,50 +83,6 @@ export class PreloadScene extends Scene {
     g.fillStyle(0xFFAA00);
     g.fillTriangle(4, 4, 1, 14, 7, 14);
     g.generateTexture('flame', 8, 16);
-
-    // Enemies
-    const enemyColors = [
-      { id: 'grunt', c: 0x8B4513 },
-      { id: 'runner', c: 0xFF6347 },
-      { id: 'tank', c: 0x556B2F },
-      { id: 'ranged', c: 0x9370DB },
-      { id: 'charger', c: 0xDC143C },
-      { id: 'elite', c: 0xFFD700 },
-      { id: 'summoner', c: 0x4B0082 }
-    ];
-
-    for (const e of enemyColors) {
-      g.clear();
-      g.fillStyle(e.c);
-      if (e.id === 'tank') {
-        g.fillRect(2, 2, 28, 28);
-      } else if (e.id === 'ranged') {
-        g.fillCircle(14, 14, 12);
-        g.fillStyle(0xFFFFFF);
-        g.fillCircle(14, 14, 4);
-      } else if (e.id === 'charger') {
-        g.fillTriangle(14, 0, 0, 28, 28, 28);
-      } else {
-        g.fillCircle(14, 14, 12);
-      }
-      g.generateTexture(`enemy_${e.id}`, 28, 28);
-    }
-
-    // Boss
-    g.clear();
-    g.fillStyle(0x8B0000);
-    g.fillCircle(32, 32, 30);
-    g.fillStyle(0xFF0000);
-    g.fillCircle(32, 32, 20);
-    g.fillStyle(0xFFFFFF);
-    g.fillCircle(24, 24, 6);
-    g.fillCircle(40, 24, 6);
-    g.fillStyle(0x000000);
-    g.fillCircle(24, 24, 3);
-    g.fillCircle(40, 24, 3);
-    g.lineStyle(3, 0xFF6600);
-    g.strokeCircle(32, 32, 30);
-    g.generateTexture('boss', 64, 64);
 
     // Pickups
     g.clear();
@@ -187,7 +130,7 @@ export class PreloadScene extends Scene {
     g.fillRect(0, 0, 60, 4);
     g.generateTexture('wreck', 60, 4);
 
-    // UI
+    // UI bars
     g.clear();
     g.fillStyle(0xFF6600);
     g.fillRect(0, 0, 200, 24);
@@ -212,6 +155,29 @@ export class PreloadScene extends Scene {
     g.fillStyle(0xFFD700);
     g.fillRect(0, 0, 200, 24);
     g.generateTexture('bar_gold', 200, 24);
+
+    // Missing enemy art — procedural fallback
+    const missingEnemies = [
+      { id: 'charger', c: 0xDC143C, shape: 'triangle' },
+      { id: 'elite', c: 0xFFD700, shape: 'circle' },
+      { id: 'summoner', c: 0x4B0082, shape: 'diamond' }
+    ];
+
+    for (const e of missingEnemies) {
+      g.clear();
+      g.fillStyle(e.c);
+      if (e.shape === 'triangle') {
+        g.fillTriangle(14, 0, 0, 28, 28, 28);
+      } else if (e.shape === 'diamond') {
+        g.fillTriangle(14, 2, 26, 14, 14, 26);
+        g.fillTriangle(14, 2, 2, 14, 14, 26);
+      } else {
+        g.fillCircle(14, 14, 12);
+        g.fillStyle(0xFFFFFF);
+        g.fillCircle(14, 14, 4);
+      }
+      g.generateTexture(`enemy_${e.id}`, 28, 28);
+    }
 
     // Virtual joystick
     g.clear();

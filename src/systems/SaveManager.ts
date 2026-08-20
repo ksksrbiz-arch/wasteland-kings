@@ -1,12 +1,53 @@
 import type { SaveData, GameSettings } from '../types';
 
 const SAVE_KEY = 'wasteland_kings_save_v2';
+const UUID_KEY = 'wasteland_kings_uuid';
+const API_BASE_KEY = 'wasteland_kings_api_base';
+
+// Default API base — empty string means same-origin (useful when worker proxies static assets)
+// Override by setting localStorage.wasteland_kings_api_base = "https://your-worker.workers.dev"
+function getApiBase(): string {
+  try {
+    return localStorage.getItem(API_BASE_KEY) || '';
+  } catch { return ''; }
+}
+
+function apiUrl(path: string): string {
+  const base = getApiBase();
+  return base ? `${base.replace(/\/$/, '')}${path}` : path;
+}
+
+function generateUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
 
 export class SaveManager {
   private data: SaveData;
+  private uuid: string;
+  private syncPending = false;
 
   constructor() {
+    this.uuid = this.getOrCreateUUID();
     this.data = this.load();
+    this.cloudLoad(); // fire-and-forget background sync
+  }
+
+  private getOrCreateUUID(): string {
+    try {
+      let id = localStorage.getItem(UUID_KEY);
+      if (!id) {
+        id = generateUUID();
+        localStorage.setItem(UUID_KEY, id);
+      }
+      return id;
+    } catch { return generateUUID(); }
+  }
+
+  getUUID(): string {
+    return this.uuid;
   }
 
   private load(): SaveData {
@@ -45,8 +86,107 @@ export class SaveManager {
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(this.data));
     } catch { /* storage full */ }
+    this.cloudSave();
   }
 
+  // ── Cloud Save ──
+  async cloudSave(): Promise<boolean> {
+    try {
+      const res = await fetch(apiUrl('/save/' + this.uuid), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.data)
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async cloudLoad(): Promise<boolean> {
+    try {
+      const res = await fetch(apiUrl('/save/' + this.uuid), { method: 'GET' });
+      if (res.ok) {
+        const cloud = await res.json() as SaveData;
+        if (cloud && cloud.version === 2) {
+          // Merge: keep higher totals, cloud wins on everything else
+          this.data.totalScrap = Math.max(this.data.totalScrap, cloud.totalScrap);
+          this.data.highestWave = Math.max(this.data.highestWave, cloud.highestWave);
+          this.data.totalKills = Math.max(this.data.totalKills, cloud.totalKills);
+          this.data.totalRuns = Math.max(this.data.totalRuns, cloud.totalRuns);
+          // Merge upgrades (take higher levels)
+          for (const [k, v] of Object.entries(cloud.upgrades)) {
+            this.data.upgrades[k] = Math.max(this.data.upgrades[k] || 0, v as number);
+          }
+          // Merge unlocks
+          for (const c of cloud.unlockedCharacters) {
+            if (!this.data.unlockedCharacters.includes(c)) {
+              this.data.unlockedCharacters.push(c);
+            }
+          }
+          // Merge achievements
+          for (const a of cloud.achievements) {
+            if (!this.data.achievements.includes(a)) {
+              this.data.achievements.push(a);
+            }
+          }
+          this.saveLocalOnly();
+          return true;
+        }
+      }
+    } catch { /* offline */ }
+    return false;
+  }
+
+  private saveLocalOnly(): void {
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify(this.data));
+    } catch { /* storage full */ }
+  }
+
+  // ── Leaderboard ──
+  async submitLeaderboard(entry: {
+    name: string;
+    score: number;
+    wave: number;
+    kills: number;
+    time: number;
+    character: string;
+  }): Promise<{ success: boolean; rank?: number }> {
+    try {
+      const res = await fetch(apiUrl('/leaderboard/submit'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(entry)
+      });
+      if (res.ok) {
+        const json = await res.json();
+        return { success: true, rank: json.rank };
+      }
+    } catch { /* offline */ }
+    return { success: false };
+  }
+
+  async getLeaderboard(limit = 20): Promise<Array<{
+    name: string;
+    score: number;
+    wave: number;
+    kills: number;
+    time: number;
+    character: string;
+    date: string;
+  }>> {
+    try {
+      const res = await fetch(apiUrl(`/leaderboard/list?limit=${limit}`), { method: 'GET' });
+      if (res.ok) {
+        const json = await res.json();
+        return json.scores || [];
+      }
+    } catch { /* offline */ }
+    return [];
+  }
+
+  // ── Local getters/setters ──
   getData(): SaveData { return this.data; }
   getSettings(): GameSettings { return this.data.settings; }
   setSettings(s: Partial<GameSettings>): void { Object.assign(this.data.settings, s); this.save(); }

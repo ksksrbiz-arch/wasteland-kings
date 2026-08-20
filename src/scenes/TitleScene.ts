@@ -19,7 +19,11 @@ export class TitleScene extends Scene {
     this.audioManager = new AudioManager();
     this.registry.set('audioManager', this.audioManager);
 
-    this.cameras.main.setBackgroundColor('#1a0a00');
+    // Title background
+    const bg = this.add.image(640, 360, 'title_bg');
+    bg.setDisplaySize(1280, 720);
+    bg.setAlpha(0.7);
+
     this.cameras.main.fadeIn(500);
 
     // Animated background particles
@@ -77,7 +81,7 @@ export class TitleScene extends Scene {
     });
 
     // Version
-    this.add.text(1260, 700, 'v1.0', {
+    this.add.text(1260, 700, 'v1.1', {
       fontSize: '12px', fontFamily: 'Courier New', color: '#444444'
     }).setOrigin(1, 0.5);
 
@@ -99,8 +103,8 @@ export class TitleScene extends Scene {
         .setStrokeStyle(2, i === 0 ? 0xFF6600 : 0x444444);
       container.add(bg);
 
-      const sprite = this.add.image(0, -30, `player_${char.id === 'scrapper' ? '' : char.id}`)
-        .setScale(2);
+      const tex = char.id === 'scrapper' ? 'player_scrapper' : `player_${char.id}`;
+      const sprite = this.add.image(0, -30, tex).setScale(0.06);
       container.add(sprite);
 
       const name = this.add.text(0, 20, char.name, {

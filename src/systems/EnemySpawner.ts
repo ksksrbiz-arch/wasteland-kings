@@ -58,7 +58,8 @@ export class EnemySpawner {
   }
 
   spawnEnemyAt(x: number, y: number, type: EnemyType, wave: number = 1): void {
-    const enemy = this.scene.physics.add.sprite(x, y, `enemy_${type.id}`) as Phaser.Physics.Arcade.Sprite;
+    const tex = `enemy_${type.id}`;
+    const enemy = this.scene.physics.add.sprite(x, y, tex) as Phaser.Physics.Arcade.Sprite;
     if (!enemy) return;
 
     const hpScale = 1 + (wave - 1) * 0.15;
@@ -69,7 +70,8 @@ export class EnemySpawner {
     enemy.setDepth(5);
     this.enemies.add(enemy);
 
-    const scale = type.radius / 12;
+    // 1024px sprites scaled to match gameplay radius (~radius*2 pixels wide)
+    const scale = (type.radius * 2) / 1024;
     enemy.setScale(scale);
   }
 

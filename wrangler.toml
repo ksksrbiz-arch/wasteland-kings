@@ -1,0 +1,15 @@
+name = "wasteland-kings-api"
+main = "worker.ts"
+compatibility_date = "2025-01-01"
+
+[[durable_objects.bindings]]
+name = "LEADERBOARD"
+class_name = "LeaderboardDO"
+
+[[durable_objects.bindings]]
+name = "CLOUDSAVE"
+class_name = "CloudSaveDO"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["LeaderboardDO", "CloudSaveDO"]

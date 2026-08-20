@@ -94,6 +94,11 @@ export class GameScene extends Scene {
     this.cameras.main.setBounds(0, 0, 2400, 2400);
     this.physics.world.setBounds(0, 0, 2400, 2400);
 
+    // Ground tile background
+    const ground = this.add.tileSprite(1200, 1200, 2400, 2400, 'ground_tile');
+    ground.setDepth(0);
+
+    // Scenery
     for (let i = 0; i < 50; i++) {
       const x = Phaser.Math.Between(0, 2400);
       const y = Phaser.Math.Between(0, 2400);
@@ -107,10 +112,11 @@ export class GameScene extends Scene {
     this.enemies = this.physics.add.group();
     this.pickups = this.physics.add.group();
 
-    const tex = this.character.id === 'scrapper' ? 'player' : `player_${this.character.id}`;
+    const tex = this.character.id === 'scrapper' ? 'player_scrapper' : `player_${this.character.id}`;
     this.player = this.physics.add.sprite(1200, 1200, tex);
     this.player.setCollideWorldBounds(true);
     this.player.setDepth(10);
+    this.player.setScale(0.035);
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
@@ -279,7 +285,7 @@ export class GameScene extends Scene {
     }
   }
 
-  private killEnemy(enemy: Phaser.Physics.Arcade.Sprite): void {
+  killEnemy(enemy: Phaser.Physics.Arcade.Sprite): void {
     const data = enemy.getData('enemyData') as EnemyType;
     if (!data) return;
 
@@ -478,6 +484,7 @@ export class GameScene extends Scene {
     this.boss.setData('phase', 1);
     this.boss.setData('chargeTimer', 0);
     this.boss.setData('summonTimer', 0);
+    this.boss.setScale(0.06);
     this.enemies.add(this.boss);
 
     this.hud.showBossWarning();

@@ -12,9 +12,21 @@ interface GameOverData {
   character: CharacterData;
 }
 
+interface LeaderboardEntry {
+  name: string;
+  score: number;
+  wave: number;
+  kills: number;
+  time: number;
+  character: string;
+  date: string;
+}
+
 export class GameOverScene extends Scene {
   private saveManager!: SaveManager;
   private audioManager!: AudioManager;
+  private submitted = false;
+  private leaderboardShown = false;
 
   constructor() {
     super({ key: 'GameOverScene' });
@@ -52,28 +64,85 @@ export class GameOverScene extends Scene {
       }).setOrigin(0.5);
     });
 
-    // New achievements
-    const newAchieves: string[] = [];
-    // Would check here but achievements already unlocked during game
+    // Submit Score button
+    this.createButton(640, 430, 'SUBMIT SCORE', () => this.submitScore(data));
 
-    this.createButton(640, 460, 'PLAY AGAIN', () => {
+    // Play Again
+    this.createButton(640, 490, 'PLAY AGAIN', () => {
       this.audioManager.stopMusic();
       this.scene.stop('GameScene');
       this.scene.stop();
       this.scene.start('GameScene', { character: data.character });
     });
 
-    this.createButton(640, 520, 'THE GARAGE', () => {
+    // Garage
+    this.createButton(640, 550, 'THE GARAGE', () => {
       this.scene.stop('GameScene');
       this.scene.stop();
       this.scene.start('ShopScene');
     });
 
-    this.createButton(640, 580, 'MAIN MENU', () => {
+    // Main Menu
+    this.createButton(640, 610, 'MAIN MENU', () => {
       this.audioManager.startMusic();
       this.scene.stop('GameScene');
       this.scene.stop();
       this.scene.start('TitleScene');
+    });
+  }
+
+  private async submitScore(data: GameOverData): Promise<void> {
+    if (this.submitted) return;
+    this.submitted = true;
+
+    const name = prompt('Enter your name for the leaderboard (max 20 chars):', 'Wastelander') || 'Wastelander';
+
+    const result = await this.saveManager.submitLeaderboard({
+      name: name.slice(0, 20),
+      score: data.scrap,
+      wave: data.wave,
+      kills: data.kills,
+      time: data.time,
+      character: data.character.id
+    });
+
+    if (result.success) {
+      const msg = result.rank ? `Rank #${result.rank}!` : 'Score submitted!';
+      this.add.text(640, 400, msg, {
+        fontSize: '18px', fontFamily: 'Courier New', color: '#00FF00', fontStyle: 'bold'
+      }).setOrigin(0.5);
+      this.showLeaderboard();
+    } else {
+      this.add.text(640, 400, 'OFFLINE — Score saved locally', {
+        fontSize: '16px', fontFamily: 'Courier New', color: '#FFAA00'
+      }).setOrigin(0.5);
+    }
+  }
+
+  private async showLeaderboard(): Promise<void> {
+    if (this.leaderboardShown) return;
+    this.leaderboardShown = true;
+
+    const scores = await this.saveManager.getLeaderboard(10);
+    if (scores.length === 0) return;
+
+    // Leaderboard panel
+    const panel = this.add.container(1000, 360);
+    const bg = this.add.rectangle(0, 0, 240, 320, 0x111111, 0.9)
+      .setStrokeStyle(2, 0xFF6600);
+    panel.add(bg);
+
+    panel.add(this.add.text(0, -140, 'LEADERBOARD', {
+      fontSize: '16px', fontFamily: 'Courier New', color: '#FF6600', fontStyle: 'bold'
+    }).setOrigin(0.5));
+
+    scores.forEach((s, i) => {
+      const y = -110 + i * 28;
+      const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
+      const line = `${(i + 1).toString().padStart(2, ' ')} ${s.name.padEnd(12, ' ').slice(0, 12)} ${s.score}`;
+      panel.add(this.add.text(0, y, line, {
+        fontSize: '12px', fontFamily: 'Courier New', color
+      }).setOrigin(0.5));
     });
   }
 
