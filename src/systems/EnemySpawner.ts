@@ -70,10 +70,22 @@ export class EnemySpawner {
     enemy.setDepth(5);
     this.enemies.add(enemy);
 
-    // 1024px sprites: base scale 0.07, larger for tanks
-    const baseScale = 0.07;
+    // 1024px sprites: base scale 0.10 for visibility
+    const baseScale = 0.10;
     const scale = baseScale * (type.radius / 12);
     enemy.setScale(scale);
+
+    // Colored outline ring for visibility
+    const outlineColor = type.color;
+    const outline = this.scene.add.ellipse(x, y, 40 * scale, 40 * scale);
+    outline.setStrokeStyle(2, outlineColor, 0.8);
+    outline.setDepth(4);
+    enemy.setData('outline', outline);
+
+    // Dark shadow under enemy
+    const shadow = this.scene.add.ellipse(x, y + 4, 30 * scale, 12 * scale, 0x000000, 0.4);
+    shadow.setDepth(3);
+    enemy.setData('shadow', shadow);
   }
 
   private updateEnemy(enemy: Phaser.Physics.Arcade.Sprite): void {
@@ -81,6 +93,12 @@ export class EnemySpawner {
 
     const data = enemy.getData('enemyData') as EnemyType;
     if (!data) return;
+
+    // Update outline and shadow positions
+    const outline = enemy.getData('outline') as Phaser.GameObjects.Ellipse;
+    const shadow = enemy.getData('shadow') as Phaser.GameObjects.Ellipse;
+    if (outline) outline.setPosition(enemy.x, enemy.y);
+    if (shadow) shadow.setPosition(enemy.x, enemy.y + 4 * enemy.scaleY);
 
     const dist = Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y);
 
@@ -136,6 +154,11 @@ export class EnemySpawner {
     }
 
     if (dist > 1200) {
+      // Clean up outline and shadow before destroying
+      const outline = enemy.getData('outline') as Phaser.GameObjects.Ellipse;
+      const shadow = enemy.getData('shadow') as Phaser.GameObjects.Ellipse;
+      if (outline) outline.destroy();
+      if (shadow) shadow.destroy();
       enemy.destroy();
     }
   }
