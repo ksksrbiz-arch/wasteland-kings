@@ -92,6 +92,10 @@ export class AudioManager {
     });
   }
   tesla(): void { this.playTone(2000, 0.08, 'sine', 0.06); }
+  dash(): void {
+    this.playTone(1200, 0.08, 'sine', 0.08);
+    setTimeout(() => this.playTone(1800, 0.05, 'sine', 0.05), 50);
+  }
 
   startMusic(): void {
     if (this.musicOsc) return;

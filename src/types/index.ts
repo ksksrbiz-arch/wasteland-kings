@@ -57,6 +57,27 @@ export interface EnemyType {
   mass: number;
 }
 
+export interface TempWeapon {
+  id: string;
+  name: string;
+  damage: number;
+  fireRate: number;
+  range: number;
+  pierce: number;
+  projectileSpeed: number;
+  projectileCount: number;
+  batteryLife: number; // seconds
+  element: 'none' | 'poison' | 'freeze' | 'fire';
+}
+
+export const TEMP_WEAPONS: TempWeapon[] = [
+  {
+    id: 'laser_cannon', name: 'Laser Cannon', damage: 80, fireRate: 600,
+    range: 500, pierce: 999, projectileSpeed: 900, projectileCount: 1,
+    batteryLife: 10, element: 'fire'
+  }
+];
+
 export interface BossPhase {
   hpThreshold: number;
   speed: number;

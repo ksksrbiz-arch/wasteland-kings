@@ -26,13 +26,11 @@ export class WeaponSystem {
       }
     }
 
-    // Update saws
     this.updateSaws(time, weapons);
-    // Update tesla
     this.updateTesla(time, weapons, stats);
   }
 
-  private fire(weapon: WeaponData, stats: PlayerStats, passives: any[]): void {
+  private fire(weapon: WeaponData, stats: PlayerStats, _passives: any[]): void {
     const enemies = this.scene.physics.world.bodies.entries
       .filter((b: any) => b.gameObject?.getData?.('enemyData'))
       .map((b: any) => b.gameObject as Phaser.Physics.Arcade.Sprite)
@@ -53,16 +51,18 @@ export class WeaponSystem {
         break;
       case 'tesla':
       case 'stormcaller':
-        // Tesla is handled in updateTesla
         break;
       case 'flame':
       case 'inferno':
         this.fireFlame(weapon, enemies, damage);
         break;
+      case 'laser_cannon':
+        this.fireLaserCannon(weapon, enemies, damage);
+        break;
     }
 
     const audio = this.scene.registry.get('audioManager');
-    if (weapon.id === 'rocket' || weapon.id === 'hellfire') audio.explosion();
+    if (weapon.id === 'rocket' || weapon.id === 'hellfire' || weapon.id === 'laser_cannon') audio.explosion();
     else if (weapon.id === 'tesla' || weapon.id === 'stormcaller') audio.tesla();
     else audio.shoot();
   }
@@ -106,7 +106,6 @@ export class WeaponSystem {
       p.setData('explosionRadius', 80);
       p.setVelocity(Math.cos(angle + spread) * weapon.projectileSpeed, Math.sin(angle + spread) * weapon.projectileSpeed);
 
-      // Homing
       this.scene.tweens.add({
         targets: p,
         x: target.x,
@@ -144,6 +143,30 @@ export class WeaponSystem {
     }
   }
 
+  private fireLaserCannon(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number): void {
+    const target = this.getNearestEnemy(enemies);
+    if (!target) return;
+
+    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y);
+
+    const p = this.projectiles.get(this.player.x, this.player.y, 'bullet') as Phaser.Physics.Arcade.Sprite;
+    if (!p) return;
+    p.setActive(true).setVisible(true);
+    p.setPosition(this.player.x, this.player.y);
+    p.setData('damage', damage);
+    p.setData('pierce', weapon.pierce);
+    p.setData('isLaser', true);
+    p.setTint(0xFF0000);
+    p.setScale(1.5);
+    p.setVelocity(Math.cos(angle) * weapon.projectileSpeed, Math.sin(angle) * weapon.projectileSpeed);
+
+    const g = this.scene.add.graphics();
+    g.lineStyle(3, 0xFF0000, 0.8);
+    g.lineBetween(this.player.x, this.player.y, this.player.x + Math.cos(angle) * 30, this.player.y + Math.sin(angle) * 30);
+    g.setDepth(15);
+    this.scene.time.delayedCall(80, () => g.destroy());
+  }
+
   private updateSaws(time: number, weapons: WeaponData[]): void {
     const sawWeapon = weapons.find(w => w.id === 'saw' || w.id === 'maelstrom');
     if (!sawWeapon) {
@@ -169,7 +192,6 @@ export class WeaponSystem {
       blade.rotation = time / 200;
       blade.setVisible(true);
 
-      // Damage enemies in range
       const enemies = this.scene.physics.world.bodies.entries
         .filter((b: any) => b.gameObject?.getData?.('enemyData'))
         .map((b: any) => b.gameObject as Phaser.Physics.Arcade.Sprite);
@@ -209,7 +231,6 @@ export class WeaponSystem {
     const chains = teslaWeapon.pierce;
     const damage = teslaWeapon.damage * stats.damage;
 
-    // Clear old arcs
     this.teslaArcs.forEach(a => a.destroy());
     this.teslaArcs = [];
 
@@ -219,20 +240,17 @@ export class WeaponSystem {
     const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y);
     if (dist > range) return;
 
-    // Draw arc
     const g = this.scene.add.graphics();
     g.lineStyle(2, 0x00FFFF, 0.8);
     g.lineBetween(this.player.x, this.player.y, target.x, target.y);
     this.teslaArcs.push(g);
 
-    // Damage primary target
     const hp = target.getData('hp') as number;
     target.setData('hp', hp - damage);
     if (target.getData('hp') <= 0) {
       (this.scene as any).killEnemy?.(target);
     }
 
-    // Chain
     let lastTarget = target;
     for (let i = 1; i < chains && i < enemies.length; i++) {
       const next = enemies[i];
@@ -252,7 +270,6 @@ export class WeaponSystem {
       lastTarget = next;
     }
 
-    // Auto-remove arcs
     this.scene.time.delayedCall(100, () => {
       this.teslaArcs.forEach(a => a.destroy());
       this.teslaArcs = [];

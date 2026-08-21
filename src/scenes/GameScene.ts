@@ -5,7 +5,9 @@ import { HUD } from '../ui/HUD';
 import { WeaponSystem } from '../systems/WeaponSystem';
 import { EnemySpawner } from '../systems/EnemySpawner';
 import { UpgradeSystem } from '../systems/UpgradeSystem';
-import { WEAPONS, PASSIVES, ENEMIES, EVOLUTIONS, UPGRADES } from '../types';
+import { DashSystem } from '../systems/DashSystem';
+import { CrateSystem } from '../systems/CrateSystem';
+import { WEAPONS, PASSIVES, ENEMIES, EVOLUTIONS, UPGRADES, TEMP_WEAPONS } from '../types';
 import type { CharacterData, WeaponData, PassiveData, EnemyType } from '../types';
 
 interface GameSceneData {
@@ -20,6 +22,8 @@ export class GameScene extends Scene {
   private weaponSystem!: WeaponSystem;
   private enemySpawner!: EnemySpawner;
   private upgradeSystem!: UpgradeSystem;
+  private dashSystem!: DashSystem;
+  private crateSystem!: CrateSystem;
 
   private player!: Phaser.Physics.Arcade.Sprite;
   private playerGlow!: Phaser.GameObjects.Graphics;
@@ -41,6 +45,19 @@ export class GameScene extends Scene {
   private isWon = false;
   private bossSpawned = false;
   private bossDefeated = false;
+
+  // Dash & temp weapons
+  private spaceKey!: Phaser.Input.Keyboard.Key;
+  private tempWeapons: Array<{ weapon: WeaponData; timeLeft: number }> = [];
+
+  // Biome shift
+  private biomeShifted = false;
+  private groundTile!: Phaser.GameObjects.TileSprite;
+  private hazards: Phaser.GameObjects.Sprite[] = [];
+  private hazardTimer = 0;
+
+  // Crate timer
+  private crateSpawnTimer = 0;
 
   private projectiles!: Phaser.Physics.Arcade.Group;
   private enemies!: Phaser.Physics.Arcade.Group;
@@ -96,9 +113,9 @@ export class GameScene extends Scene {
     this.physics.world.setBounds(0, 0, 2400, 2400);
 
     // Ground tile background — scale up to hide seams
-    const ground = this.add.tileSprite(1200, 1200, 2400, 2400, 'ground_tile');
-    ground.setDepth(0);
-    ground.setTileScale(2, 2);
+    this.groundTile = this.add.tileSprite(1200, 1200, 2400, 2400, 'ground_tile');
+    this.groundTile.setDepth(0);
+    this.groundTile.setTileScale(2, 2);
 
     // Scenery
     for (let i = 0; i < 50; i++) {
@@ -146,6 +163,8 @@ export class GameScene extends Scene {
     this.weaponSystem = new WeaponSystem(this, this.projectiles, this.player);
     this.enemySpawner = new EnemySpawner(this, this.enemies, this.player);
     this.upgradeSystem = new UpgradeSystem(this);
+    this.dashSystem = new DashSystem(this, this.player);
+    this.crateSystem = new CrateSystem(this, this.player);
     this.hud = new HUD(this, this.playerStats);
     this.hud.setMinimapRefs(this.player, this.enemies);
     this.hud.setMinimapEnabled(this.saveManager.getSettings().showMinimap);
@@ -155,6 +174,7 @@ export class GameScene extends Scene {
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys('W,S,A,D') as Record<string, Phaser.Input.Keyboard.Key>;
+    this.spaceKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
     if (this.sys.game.device.os.android || this.sys.game.device.os.iOS) {
       this.createJoystick();
@@ -203,17 +223,38 @@ export class GameScene extends Scene {
       }
     }
 
-    if (vx !== 0 || vy !== 0) {
-      const len = Math.sqrt(vx * vx + vy * vy) || 1;
-      this.player.setVelocity((vx / len) * this.playerStats.speed, (vy / len) * this.playerStats.speed);
-    } else {
-      this.player.setVelocity(0);
+    // Dash input
+    if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+      const dashed = this.dashSystem.dash(vx, vy);
+      if (dashed) this.audioManager.dash();
     }
+
+    // Apply movement (dash overrides normal movement)
+    if (!this.dashSystem.isCurrentlyDashing()) {
+      if (vx !== 0 || vy !== 0) {
+        const len = Math.sqrt(vx * vx + vy * vy) || 1;
+        this.player.setVelocity((vx / len) * this.playerStats.speed, (vy / len) * this.playerStats.speed);
+      } else {
+        this.player.setVelocity(0);
+      }
+    }
+
+    // Update dash system
+    this.dashSystem.update(delta);
 
     // Update player glow position
     this.playerGlow.setPosition(this.player.x, this.player.y);
 
-    this.weaponSystem.update(time, delta, this.weapons, this.playerStats, this.passives);
+    // Update temp weapon batteries
+    this.updateTempWeapons(delta);
+
+    // Build weapon list for this frame (permanent + temp)
+    const frameWeapons = [...this.weapons];
+    for (const tw of this.tempWeapons) {
+      frameWeapons.push(tw.weapon);
+    }
+
+    this.weaponSystem.update(time, delta, frameWeapons, this.playerStats, this.passives);
     this.enemySpawner.update(time, delta, this.wave, this.bossSpawned);
 
     if (this.boss && this.boss.active) this.updateBoss();
@@ -245,7 +286,92 @@ export class GameScene extends Scene {
       return true;
     });
 
+    // Update crates
+    const crateDrop = this.crateSystem.update(delta);
+    if (crateDrop) {
+      this.applyCrateDrop(crateDrop);
+    }
+
+    // Update hazards (biome shift)
+    if (this.biomeShifted) {
+      this.updateHazards(delta);
+    }
+
     this.hud.update(this.playerStats.hp, this.playerStats.maxHp, this.xp, this.xpToLevel, this.level, this.scrap, this.wave, this.runTime);
+  }
+
+  private updateTempWeapons(delta: number): void {
+    // Drain battery
+    for (const tw of this.tempWeapons) {
+      tw.timeLeft -= delta / 1000;
+    }
+    // Remove expired
+    const expired = this.tempWeapons.filter(tw => tw.timeLeft <= 0);
+    for (const tw of expired) {
+      const txt = this.add.text(this.player.x, this.player.y - 30, `${tw.weapon.name} DEPLETED`, {
+        fontSize: '14px', fontFamily: 'Courier New', color: '#FF4444'
+      }).setOrigin(0.5).setDepth(100);
+      this.tweens.add({ targets: txt, y: txt.y - 30, alpha: 0, duration: 800, onComplete: () => txt.destroy() });
+    }
+    this.tempWeapons = this.tempWeapons.filter(tw => tw.timeLeft > 0);
+  }
+
+  private applyCrateDrop(drop: import('../systems/CrateSystem').CrateDrop): void {
+    switch (drop.type) {
+      case 'weapon':
+        if (drop.data) {
+          const existing = this.weapons.find(w => w.id === drop.data!.id);
+          if (existing) {
+            existing.level++;
+            existing.damage *= 1.2;
+          } else {
+            this.weapons.push({ ...drop.data as WeaponData });
+          }
+        }
+        break;
+      case 'passive':
+        if (drop.data) {
+          const existing = this.passives.find(p => p.id === drop.data!.id);
+          if (existing) {
+            existing.level++;
+            this.applyPassive(existing);
+          } else {
+            const np = { ...drop.data as PassiveData };
+            this.passives.push(np);
+            this.applyPassive(np);
+          }
+        }
+        break;
+      case 'temp_weapon':
+        if (drop.tempWeaponId) {
+          const tempWep = TEMP_WEAPONS.find(t => t.id === drop.tempWeaponId);
+          if (tempWep) {
+            this.tempWeapons.push({
+              weapon: {
+                id: tempWep.id,
+                name: tempWep.name,
+                description: 'Temporary heavy weapon',
+                damage: tempWep.damage,
+                fireRate: tempWep.fireRate,
+                range: tempWep.range,
+                pierce: tempWep.pierce,
+                projectileSpeed: tempWep.projectileSpeed,
+                projectileCount: tempWep.projectileCount,
+                level: 1,
+                maxLevel: 1
+              },
+              timeLeft: drop.tempWeaponDuration || 10
+            });
+          }
+        }
+        break;
+      case 'health':
+        this.playerStats.hp = Math.min(this.playerStats.hp + (drop.value || 30), this.playerStats.maxHp);
+        break;
+      case 'scrap':
+        this.scrap += (drop.value || 50);
+        break;
+    }
   }
 
   private createJoystick(): void {
@@ -305,7 +431,6 @@ export class GameScene extends Scene {
     const maxHp = data.hp;
     const pct = Math.max(0, hp / maxHp);
 
-    // Only show when damaged (or always for boss/elite)
     const isElite = enemy.getData('isBoss') || data.id === 'elite';
     const showBar = isElite || pct < 1;
     container.setVisible(showBar);
@@ -336,7 +461,6 @@ export class GameScene extends Scene {
     const newHp = currentHp - dmg;
     e.setData('hp', newHp);
 
-    // Hit flash
     e.setTint(0xFFFFFF);
     this.time.delayedCall(80, () => e.clearTint());
 
@@ -371,7 +495,6 @@ export class GameScene extends Scene {
     const data = enemy.getData('enemyData') as EnemyType;
     if (!data) return;
 
-    // Destroy health bar
     const hpBar = enemy.getData('hpBarContainer') as Phaser.GameObjects.Container;
     if (hpBar) hpBar.destroy();
 
@@ -390,6 +513,11 @@ export class GameScene extends Scene {
     }
     this.spawnPickup(enemy.x, enemy.y, 'scrap', scrapAmount);
 
+    // Elite enemies have a chance to drop a crate
+    if (data.id === 'elite' && Math.random() < 0.35) {
+      this.crateSystem.spawnCrate(enemy.x, enemy.y);
+    }
+
     if (enemy.getData('isBoss')) {
       this.bossDefeated = true;
       this.audioManager.win();
@@ -401,6 +529,9 @@ export class GameScene extends Scene {
   }
 
   private playerHit(_player: any, _enemy: any): void {
+    // Dash i-frames protect the player
+    if (this.dashSystem.isInvulnerable()) return;
+
     const e = _enemy as Phaser.Physics.Arcade.Sprite;
     const data = e.getData('enemyData') as EnemyType;
     if (!data) return;
@@ -544,6 +675,23 @@ export class GameScene extends Scene {
       this.spawnBoss();
     }
 
+    // Biome shift at 5:00 (300 seconds)
+    if (this.runTime >= 300 && !this.biomeShifted) {
+      this.triggerBiomeShift();
+    }
+
+    // Crate spawn timer (every 45 seconds)
+    this.crateSpawnTimer++;
+    if (this.crateSpawnTimer >= 45) {
+      this.crateSpawnTimer = 0;
+      const angle = Math.random() * Math.PI * 2;
+      const dist = Phaser.Math.Between(400, 600);
+      this.crateSystem.spawnCrate(
+        this.player.x + Math.cos(angle) * dist,
+        this.player.y + Math.sin(angle) * dist
+      );
+    }
+
     if (this.runTime % 30 === 0) {
       const angle = Math.random() * Math.PI * 2;
       const dist = Phaser.Math.Between(100, 300);
@@ -553,6 +701,163 @@ export class GameScene extends Scene {
         'health', 20
       );
     }
+  }
+
+  private triggerBiomeShift(): void {
+    this.biomeShifted = true;
+
+    // Shockwave visual
+    const shockwave = this.add.circle(this.player.x, this.player.y, 10, 0xFF0000, 0.8);
+    shockwave.setDepth(100);
+    this.tweens.add({
+      targets: shockwave,
+      scaleX: 200,
+      scaleY: 200,
+      alpha: 0,
+      duration: 1500,
+      ease: 'Power2',
+      onComplete: () => shockwave.destroy()
+    });
+
+    // Screen shake
+    this.cameras.main.shake(1000, 0.03);
+
+    // Ground tint shift to dark crimson/obsidian
+    this.groundTile.setTint(0x8B0000);
+    this.cameras.main.setBackgroundColor('#1a0505');
+
+    // Flash red
+    const flash = this.add.rectangle(640, 360, 1280, 720, 0xFF0000, 0.5)
+      .setScrollFactor(0).setDepth(100);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 2000,
+      onComplete: () => flash.destroy()
+    });
+
+    // Warning text
+    const txt = this.add.text(640, 300, '☠ BIOME SHIFT ☠', {
+      fontSize: '40px', fontFamily: 'Courier New', color: '#FF0000', fontStyle: 'bold'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+    this.tweens.add({
+      targets: txt,
+      alpha: 0,
+      y: 250,
+      duration: 3000,
+      ease: 'Power2',
+      onComplete: () => txt.destroy()
+    });
+
+    // Tint all existing enemies crimson
+    this.enemies.children.each((e: any) => {
+      const enemy = e as Phaser.Physics.Arcade.Sprite;
+      if (enemy.active) {
+        enemy.setTint(0xFF4444);
+        // Boost speed
+        enemy.setData('biomeBoosted', true);
+      }
+      return true;
+    });
+
+    // Spawn initial hazards
+    for (let i = 0; i < 5; i++) {
+      this.spawnHazard();
+    }
+  }
+
+  private spawnHazard(): void {
+    const hx = Phaser.Math.Between(200, 2200);
+    const hy = Phaser.Math.Between(200, 2200);
+
+    const type = Math.random() < 0.5 ? 'geyser' : 'toxic';
+
+    if (type === 'geyser') {
+      // Erupting geyser - damages player on contact
+      const geyser = this.physics.add.sprite(hx, hy, 'rock') as Phaser.Physics.Arcade.Sprite;
+      geyser.setTint(0xFF4500);
+      geyser.setScale(1.2);
+      geyser.setDepth(4);
+      geyser.setData('hazardType', 'geyser');
+      geyser.setData('eruptTimer', 0);
+      this.hazards.push(geyser);
+
+      // Pulsing warning
+      this.tweens.add({
+        targets: geyser,
+        alpha: { from: 0.5, to: 1 },
+        duration: 500,
+        yoyo: true,
+        repeat: -1
+      });
+    } else {
+      // Toxic cloud - slow damage over time
+      const cloud = this.physics.add.sprite(hx, hy, 'cactus') as Phaser.Physics.Arcade.Sprite;
+      cloud.setTint(0x00FF00);
+      cloud.setAlpha(0.4);
+      cloud.setScale(2);
+      cloud.setDepth(4);
+      cloud.setData('hazardType', 'toxic');
+      this.hazards.push(cloud);
+
+      this.tweens.add({
+        targets: cloud,
+        scaleX: 2.5,
+        scaleY: 2.5,
+        alpha: { from: 0.3, to: 0.5 },
+        duration: 2000,
+        yoyo: true,
+        repeat: -1
+      });
+    }
+  }
+
+  private updateHazards(delta: number): void {
+    this.hazardTimer += delta;
+
+    // Spawn new hazards periodically
+    if (this.hazardTimer > 10000) {
+      this.hazardTimer = 0;
+      this.spawnHazard();
+    }
+
+    // Check player collision with hazards
+    for (const hazard of this.hazards) {
+      if (!hazard.active) continue;
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, hazard.x, hazard.y);
+
+      if (hazard.getData('hazardType') === 'geyser') {
+        let timer = hazard.getData('eruptTimer') as number;
+        timer += delta;
+        hazard.setData('eruptTimer', timer);
+
+        // Erupt every 3 seconds
+        if (timer > 3000) {
+          hazard.setData('eruptTimer', 0);
+          if (dist < 50 && !this.dashSystem.isInvulnerable()) {
+            this.playerStats.hp -= 15;
+            this.hud.flashDamage();
+            this.player.setVelocity(
+              (this.player.x - hazard.x) * 5,
+              (this.player.y - hazard.y) * 5
+            );
+          }
+          // Visual eruption
+          this.particles.emitParticleAt(hazard.x, hazard.y, 10);
+        }
+      } else if (hazard.getData('hazardType') === 'toxic') {
+        if (dist < 60 && !this.dashSystem.isInvulnerable()) {
+          // Tick damage every second while in cloud
+          if (this.hazardTimer % 1000 < delta) {
+            this.playerStats.hp -= 5;
+            this.hud.flashDamage();
+          }
+        }
+      }
+    }
+
+    // Clean up destroyed hazards
+    this.hazards = this.hazards.filter(h => h.active);
   }
 
   private spawnBoss(): void {
