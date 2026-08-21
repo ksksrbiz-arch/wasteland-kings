@@ -62,6 +62,7 @@ export class GameScene extends Scene {
   private crateSpawnTimer = 0;
 
   private projectiles!: Phaser.Physics.Arcade.Group;
+  private enemyProjectiles!: Phaser.Physics.Arcade.Group;
   private enemies!: Phaser.Physics.Arcade.Group;
   private pickups!: Phaser.Physics.Arcade.Group;
   private boss?: Phaser.Physics.Arcade.Sprite;
@@ -130,6 +131,8 @@ export class GameScene extends Scene {
     }
 
     this.projectiles = this.physics.add.group({ defaultKey: 'bullet', maxSize: 300 });
+    this.enemyProjectiles = this.physics.add.group({ defaultKey: 'bullet', maxSize: 100 });
+    this.enemies = this.physics.add.group();
     this.enemies = this.physics.add.group();
     this.pickups = this.physics.add.group();
 
@@ -198,7 +201,7 @@ export class GameScene extends Scene {
     this.weaponSystem = new WeaponSystem(this, this.projectiles, this.player, (aimAngle) => {
       this.playerAnimator.playRecoil(aimAngle);
     });
-    this.enemySpawner = new EnemySpawner(this, this.enemies, this.player);
+    this.enemySpawner = new EnemySpawner(this, this.enemies, this.player, this.enemyProjectiles);
     this.upgradeSystem = new UpgradeSystem(this);
     this.dashSystem = new DashSystem(this, this.player);
     this.crateSystem = new CrateSystem(this, this.player);
@@ -218,6 +221,10 @@ export class GameScene extends Scene {
     }
 
     this.physics.add.overlap(this.projectiles, this.enemies, this.hitEnemy as any, undefined, this);
+    this.physics.add.overlap(this.player, this.enemies, this.playerHit as any, undefined, this);
+    this.physics.add.overlap(this.player, this.enemyProjectiles, this.playerHitByProjectile as any, undefined, this);
+    this.physics.add.overlap(this.player, this.pickups, this.collectPickup as any, undefined, this);
+    this.physics.add.collider(this.enemies, this.enemies);
     this.physics.add.overlap(this.player, this.enemies, this.playerHit as any, undefined, this);
     this.physics.add.overlap(this.player, this.pickups, this.collectPickup as any, undefined, this);
     this.physics.add.collider(this.enemies, this.enemies);
@@ -281,8 +288,10 @@ export class GameScene extends Scene {
         this.player.setVelocity(0);
       }
     }
-
     this.dashSystem.update(delta);
+    this.hud.updateDashCharges(this.dashSystem.getAvailableCharges(), this.dashSystem.getChargeCooldowns(), this.dashSystem.getMaxCharges());
+    this.hud.updateCombo(delta);
+    this.playerAnimator.update(delta, vx, vy, this.dashSystem.isCurrentlyDashing());
     this.playerAnimator.update(delta, vx, vy, this.dashSystem.isCurrentlyDashing());
     this.playerGlow.setPosition(this.player.x, this.player.y);
     this.updateTempWeapons(delta);
@@ -296,6 +305,14 @@ export class GameScene extends Scene {
       if (dist > 800) proj.destroy();
       return true;
     });
+
+    this.enemyProjectiles.children.each((p: any) => {
+      const proj = p as Phaser.Physics.Arcade.Sprite;
+      if (!proj.active) return true;
+});
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, proj.x, proj.y);
+      if (dist > 900) proj.destroy();
+      return true;
 
     this.pickups.children.each((p: any) => {
       const pick = p as Phaser.Physics.Arcade.Sprite;
@@ -533,15 +550,12 @@ export class GameScene extends Scene {
     this.kills++;
     this.audioManager.kill();
 
+    this.hud.addCombo();
+    const comboMult = this.hud.getComboMultiplier();
+
     this.particles.emitParticleAt(enemy.x, enemy.y, 8);
     this.cameras.main.shake(50, 0.005);
 
-    const xpAmount = Math.round(data.xp * this.playerStats.xpBonus);
-    const scrapAmount = Math.round(data.scrap * this.playerStats.scrapBonus);
-
-    for (let i = 0; i < Math.min(xpAmount, 5); i++) {
-      this.spawnPickup(enemy.x + Phaser.Math.Between(-20, 20), enemy.y + Phaser.Math.Between(-20, 20), 'xp', 1);
-    }
     this.spawnPickup(enemy.x, enemy.y, 'scrap', scrapAmount);
 
     if (data.id === 'elite' && Math.random() < 0.35) {
@@ -586,9 +600,33 @@ export class GameScene extends Scene {
     }
   }
 
-  private collectPickup(_player: any, _pickup: any): void {
-    const p = _pickup as Phaser.Physics.Arcade.Sprite;
+  private playerHitByProjectile(_player: any, _proj: any): void {
+    if (this.dashSystem.isInvulnerable()) return;
+
+    const p = _proj as Phaser.Physics.Arcade.Sprite;
     if (!p.active) return;
+
+    let dmg = p.getData('damage') as number || 15;
+    dmg *= (1 - Math.min(this.playerStats.armor, 0.8));
+
+    this.playerStats.hp -= dmg;
+    this.damageTaken += dmg;
+    this.audioManager.playerHit();
+
+    this.playerAnimator.playHitReaction();
+
+    p.destroy();
+
+    this.cameras.main.shake(100, 0.01);
+    this.hud.flashDamage();
+
+    if (this.playerStats.hp <= 0) {
+      this.playerStats.hp = 0;
+      this.endGame(false);
+    }
+  }
+
+  private collectPickup(_player: any, _pickup: any): void {
 
     const type = p.getData('type') as string;
     const value = p.getData('value') as number;

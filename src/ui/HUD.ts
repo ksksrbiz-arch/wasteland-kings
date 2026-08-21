@@ -18,6 +18,16 @@ export class HUD {
   private weaponIcons: Phaser.GameObjects.Container[] = [];
   private damageOverlay?: Phaser.GameObjects.Rectangle;
 
+  // Dash charges
+  private dashContainer!: Phaser.GameObjects.Container;
+  private dashIcons: Phaser.GameObjects.Arc[] = [];
+  private dashCooldownArcs: Phaser.GameObjects.Arc[] = [];
+
+  // Combo
+  private comboText?: Phaser.GameObjects.Text;
+  private comboTimer = 0;
+  private comboCount = 0;
+
   // Minimap
   private minimapContainer?: Phaser.GameObjects.Container;
   private minimapGraphics?: Phaser.GameObjects.Graphics;
@@ -51,6 +61,17 @@ export class HUD {
       fontSize: '12px', fontFamily: 'Courier New', color: '#00FF00'
     }).setOrigin(0, 0.5).setScrollFactor(0).setDepth(51);
 
+    // Dash charges — small cyan circles under XP bar
+    this.dashContainer = this.scene.add.container(40, 72).setScrollFactor(0).setDepth(51);
+    for (let i = 0; i < 2; i++) {
+      const bg = this.scene.add.arc(i * 14, 0, 5, 0, 360, false, 0x004444);
+      const fill = this.scene.add.arc(i * 14, 0, 5, 0, 360, false, 0x00FFFF);
+      const cd = this.scene.add.arc(i * 14, 0, 5, 0, 0, false, 0x222222);
+      this.dashIcons.push(fill);
+      this.dashCooldownArcs.push(cd);
+      this.dashContainer.add([bg, fill, cd]);
+    }
+
     // Scrap
     this.scrapText = this.scene.add.text(1240, 20, '◈ 0', {
       fontSize: '18px', fontFamily: 'Courier New', color: '#FFAA00', fontStyle: 'bold'
@@ -79,9 +100,8 @@ export class HUD {
   }
 
   private createMinimap(): void {
-    // Place minimap on the left side, below the XP bar (visible and unobstructed)
-    const mx = 40 + this.mapW / 2;   // left padding
-    const my = 110 + this.mapH / 2;  // below XP bar + level text
+    const mx = 40 + this.mapW / 2;
+    const my = 110 + this.mapH / 2;
 
     this.minimapContainer = this.scene.add.container(mx, my).setScrollFactor(0).setDepth(50);
 
@@ -106,30 +126,88 @@ export class HUD {
   }
 
   update(hp: number, maxHp: number, xp: number, xpToLevel: number, level: number, scrap: number, wave: number, time: number): void {
-    // HP
     const hpPct = Math.max(0, hp / maxHp);
     this.hpBar.setDisplaySize(200 * hpPct, 16);
     this.hpBar.setFillStyle(hpPct < 0.3 ? 0xFF0000 : hpPct < 0.6 ? 0xFFAA00 : 0x00FF00);
     this.hpText.setText(`${Math.round(hp)}/${Math.round(maxHp)}`);
 
-    // XP
     const xpPct = Math.min(1, xp / xpToLevel);
     this.xpBar.setDisplaySize(200 * xpPct, 8);
     this.levelText.setText(`Lv.${level}`);
 
-    // Scrap
     this.scrapText.setText(`◈ ${scrap}`);
-
-    // Wave
     this.waveText.setText(`WAVE ${wave}`);
 
-    // Time
     const mins = Math.floor(time / 60);
     const secs = time % 60;
     this.timeText.setText(`${mins}:${secs.toString().padStart(2, '0')}`);
 
-    // Minimap
     this.updateMinimap();
+  }
+
+  /** Call every frame from GameScene.update to animate dash cooldowns */
+  updateDashCharges(available: number, cooldowns: number[], maxCharges: number): void {
+    for (let i = 0; i < maxCharges; i++) {
+      const ready = i < available;
+      this.dashIcons[i].setVisible(ready);
+      this.dashCooldownArcs[i].setVisible(!ready);
+      if (!ready) {
+        const pct = Math.min(1, 1 - (cooldowns[i] / 3500));
+        this.dashCooldownArcs[i].setAngle(0, pct * 360);
+      }
+    }
+  }
+
+  /** Call when a combo milestone is reached */
+  addCombo(): void {
+    this.comboCount++;
+    this.comboTimer = 3000; // 3 seconds to keep combo alive
+
+    if (this.comboText) this.comboText.destroy();
+
+    const mult = this.getComboMultiplier();
+    const color = mult >= 4 ? '#FF0000' : mult >= 3 ? '#FFAA00' : mult >= 2 ? '#00FF00' : '#AAAAAA';
+
+    this.comboText = this.scene.add.text(640, 140, `${this.comboCount}x COMBO! +${mult}x XP`, {
+      fontSize: `${20 + mult * 4}px`, fontFamily: 'Courier New', color, fontStyle: 'bold'
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(100);
+
+    this.scene.tweens.add({
+      targets: this.comboText,
+      scaleX: 1.2, scaleY: 1.2,
+      duration: 100,
+      yoyo: true,
+      ease: 'Power2'
+    });
+  }
+
+  updateCombo(delta: number): void {
+    if (this.comboTimer > 0) {
+      this.comboTimer -= delta;
+      if (this.comboTimer <= 0) {
+        this.comboCount = 0;
+        if (this.comboText) {
+          this.scene.tweens.add({
+            targets: this.comboText,
+            alpha: 0, y: this.comboText.y - 20,
+            duration: 400,
+            onComplete: () => this.comboText?.destroy()
+          });
+          this.comboText = undefined;
+        }
+      }
+    }
+  }
+
+  getComboMultiplier(): number {
+    if (this.comboCount >= 20) return 4;
+    if (this.comboCount >= 10) return 3;
+    if (this.comboCount >= 5) return 2;
+    return 1;
+  }
+
+  getComboCount(): number {
+    return this.comboCount;
   }
 
   private updateMinimap(): void {
@@ -137,18 +215,14 @@ export class HUD {
 
     this.minimapGraphics.clear();
 
-    // Player dot
     const px = (this.player.x / this.worldW) * this.mapW - this.mapW / 2;
     const py = (this.player.y / this.worldH) * this.mapH - this.mapH / 2;
     this.minimapPlayerDot!.setPosition(px, py);
 
-    // World bounds outline
     this.minimapGraphics.lineStyle(1, 0x666666);
     this.minimapGraphics.strokeRect(-this.mapW / 2, -this.mapH / 2, this.mapW, this.mapH);
 
-    // Enemy dots
     if (this.enemies) {
-      let idx = 0;
       this.enemies.children.each((e: any) => {
         const enemy = e as Phaser.Physics.Arcade.Sprite;
         if (!enemy.active) return true;
@@ -156,7 +230,6 @@ export class HUD {
         const ex = (enemy.x / this.worldW) * this.mapW - this.mapW / 2;
         const ey = (enemy.y / this.worldH) * this.mapH - this.mapH / 2;
 
-        // Only draw if within minimap bounds
         if (ex >= -this.mapW / 2 && ex <= this.mapW / 2 && ey >= -this.mapH / 2 && ey <= this.mapH / 2) {
           const isBoss = enemy.getData('isBoss');
           const color = isBoss ? 0xFF0000 : 0xFF6600;
