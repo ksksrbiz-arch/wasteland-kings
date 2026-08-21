@@ -8,11 +8,13 @@ export class WeaponSystem {
   private lastFire: Map<string, number> = new Map();
   private sawBlades: Phaser.GameObjects.Image[] = [];
   private teslaArcs: Phaser.GameObjects.Graphics[] = [];
+  private onFireCallback?: (aimAngle: number) => void;
 
-  constructor(scene: Scene, projectiles: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite) {
+  constructor(scene: Scene, projectiles: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite, onFire?: (aimAngle: number) => void) {
     this.scene = scene;
     this.projectiles = projectiles;
     this.player = player;
+    this.onFireCallback = onFire;
   }
 
   update(time: number, _delta: number, weapons: WeaponData[], stats: PlayerStats, passives: any[]): void {
@@ -39,6 +41,14 @@ export class WeaponSystem {
     if (enemies.length === 0) return;
 
     const damage = weapon.damage * stats.damage;
+
+    // Calculate aim angle toward nearest enemy for recoil/animation
+    const nearest = this.getNearestEnemy(enemies);
+    let aimAngle = 0;
+    if (nearest) {
+      aimAngle = Phaser.Math.Angle.Between(this.player.x, this.player.y, nearest.x, nearest.y);
+      if (this.onFireCallback) this.onFireCallback(aimAngle);
+    }
 
     switch (weapon.id) {
       case 'scrapgun':

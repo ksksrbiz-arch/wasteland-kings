@@ -1,4 +1,4 @@
-import { Scene } from 'phaser';
+import { PlayerAnimator } from '../systems/PlayerAnimator';
 import { SaveManager } from '../systems/SaveManager';
 import { AudioManager } from '../systems/AudioManager';
 import { HUD } from '../ui/HUD';
@@ -24,6 +24,8 @@ export class GameScene extends Scene {
   private upgradeSystem!: UpgradeSystem;
   private dashSystem!: DashSystem;
   private crateSystem!: CrateSystem;
+  private playerAnimator!: PlayerAnimator;
+
 
   private player!: Phaser.Physics.Arcade.Sprite;
   private playerGlow!: Phaser.GameObjects.Graphics;
@@ -191,7 +193,11 @@ export class GameScene extends Scene {
       emitting: false
     });
 
-    this.weaponSystem = new WeaponSystem(this, this.projectiles, this.player);
+    this.playerAnimator = new PlayerAnimator(this, this.player);
+
+    this.weaponSystem = new WeaponSystem(this, this.projectiles, this.player, (aimAngle) => {
+      this.playerAnimator.playRecoil(aimAngle);
+    });
     this.enemySpawner = new EnemySpawner(this, this.enemies, this.player);
     this.upgradeSystem = new UpgradeSystem(this);
     this.dashSystem = new DashSystem(this, this.player);
@@ -259,7 +265,11 @@ export class GameScene extends Scene {
     // Dash input
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
       const dashed = this.dashSystem.dash(vx, vy);
-      if (dashed) this.audioManager.dash();
+      if (dashed) {
+        this.audioManager.dash();
+        this.playerAnimator.playDashStart(vx || (this.player.flipX ? -1 : 1), vy);
+        this.time.delayedCall(250, () => this.playerAnimator.playDashEnd());
+      }
     }
 
     // Apply movement
@@ -273,16 +283,9 @@ export class GameScene extends Scene {
     }
 
     this.dashSystem.update(delta);
+    this.playerAnimator.update(delta, vx, vy, this.dashSystem.isCurrentlyDashing());
     this.playerGlow.setPosition(this.player.x, this.player.y);
     this.updateTempWeapons(delta);
-
-    const frameWeapons = [...this.weapons];
-    for (const tw of this.tempWeapons) {
-      frameWeapons.push(tw.weapon);
-    }
-
-    this.weaponSystem.update(time, delta, frameWeapons, this.playerStats, this.passives);
-    this.enemySpawner.update(time, delta, this.wave, this.bossSpawned);
 
     if (this.boss && this.boss.active) this.updateBoss();
 
@@ -569,8 +572,7 @@ export class GameScene extends Scene {
     this.damageTaken += dmg;
     this.audioManager.playerHit();
 
-    this.player.setAlpha(0.5);
-    this.time.delayedCall(500, () => this.player.setAlpha(1));
+    this.playerAnimator.playHitReaction();
 
     const angle = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
     this.player.setVelocity(Math.cos(angle) * 200, Math.sin(angle) * 200);
@@ -580,7 +582,6 @@ export class GameScene extends Scene {
 
     if (this.playerStats.hp <= 0) {
       this.playerStats.hp = 0;
-      this.endGame(false);
     }
   }
 
