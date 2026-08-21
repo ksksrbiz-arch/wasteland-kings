@@ -22,6 +22,7 @@ export class GameScene extends Scene {
   private upgradeSystem!: UpgradeSystem;
 
   private player!: Phaser.Physics.Arcade.Sprite;
+  private playerGlow!: Phaser.GameObjects.Graphics;
   private playerStats = {
     hp: 100, maxHp: 100, speed: 160, damage: 1, fireRate: 1,
     pickupRadius: 80, critChance: 0.05, critDamage: 1.5, regen: 0, armor: 0,
@@ -118,6 +119,11 @@ export class GameScene extends Scene {
     this.player.setDepth(10);
     this.player.setScale(0.06);
 
+    // Player glow for visibility
+    this.playerGlow = this.add.graphics();
+    this.playerGlow.setDepth(9);
+    this.drawPlayerGlow();
+
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
     this.particles = this.add.particles(0, 0, 'spark', {
@@ -132,6 +138,8 @@ export class GameScene extends Scene {
     this.enemySpawner = new EnemySpawner(this, this.enemies, this.player);
     this.upgradeSystem = new UpgradeSystem(this);
     this.hud = new HUD(this, this.playerStats);
+    this.hud.setMinimapRefs(this.player, this.enemies);
+    this.hud.setMinimapEnabled(this.saveManager.getSettings().showMinimap);
 
     const startWep = WEAPONS.find(w => w.id === this.character.startingWeapon);
     if (startWep) this.weapons.push({ ...startWep });
@@ -154,6 +162,17 @@ export class GameScene extends Scene {
     this.time.addEvent({ delay: 1000, callback: this.secondTick, callbackScope: this, loop: true });
 
     this.saveManager.unlockAchievement('first_blood');
+  }
+
+  private drawPlayerGlow(): void {
+    this.playerGlow.clear();
+    const color = this.character.id === 'scrapper' ? 0xFF6600 :
+                  this.character.id === 'speedster' ? 0x00FFFF :
+                  this.character.id === 'juggernaut' ? 0xFF4444 : 0x9370DB;
+    this.playerGlow.fillStyle(color, 0.15);
+    this.playerGlow.fillCircle(0, 0, 50);
+    this.playerGlow.fillStyle(color, 0.08);
+    this.playerGlow.fillCircle(0, 0, 80);
   }
 
   update(time: number, delta: number): void {
@@ -182,6 +201,9 @@ export class GameScene extends Scene {
       this.player.setVelocity(0);
     }
 
+    // Update player glow position
+    this.playerGlow.setPosition(this.player.x, this.player.y);
+
     this.weaponSystem.update(time, delta, this.weapons, this.playerStats, this.passives);
     this.enemySpawner.update(time, delta, this.wave, this.bossSpawned);
 
@@ -203,6 +225,14 @@ export class GameScene extends Scene {
         const angle = Phaser.Math.Angle.Between(pick.x, pick.y, this.player.x, this.player.y);
         pick.setVelocity(Math.cos(angle) * 300, Math.sin(angle) * 300);
       }
+      return true;
+    });
+
+    // Update enemy health bars
+    this.enemies.children.each((e: any) => {
+      const enemy = e as Phaser.Physics.Arcade.Sprite;
+      if (!enemy.active) return true;
+      this.updateEnemyHealthBar(enemy);
       return true;
     });
 
@@ -239,6 +269,45 @@ export class GameScene extends Scene {
     });
   }
 
+  private createEnemyHealthBar(enemy: Phaser.Physics.Arcade.Sprite): void {
+    const container = this.add.container(enemy.x, enemy.y - 30);
+    const bg = this.add.rectangle(0, 0, 24, 4, 0x000000, 0.7).setOrigin(0.5);
+    const bar = this.add.rectangle(-12, 0, 24, 4, 0xFF0000).setOrigin(0, 0.5);
+    container.add([bg, bar]);
+    container.setDepth(20);
+    enemy.setData('hpBarContainer', container);
+    enemy.setData('hpBar', bar);
+  }
+
+  private updateEnemyHealthBar(enemy: Phaser.Physics.Arcade.Sprite): void {
+    let container = enemy.getData('hpBarContainer') as Phaser.GameObjects.Container;
+    let bar = enemy.getData('hpBar') as Phaser.GameObjects.Rectangle;
+
+    if (!container) {
+      this.createEnemyHealthBar(enemy);
+      container = enemy.getData('hpBarContainer');
+      bar = enemy.getData('hpBar');
+    }
+
+    const data = enemy.getData('enemyData') as EnemyType;
+    const hp = enemy.getData('hp') as number;
+    if (!data || hp <= 0) return;
+
+    const maxHp = data.hp;
+    const pct = Math.max(0, hp / maxHp);
+
+    // Only show when damaged (or always for boss/elite)
+    const isElite = enemy.getData('isBoss') || data.id === 'elite';
+    const showBar = isElite || pct < 1;
+    container.setVisible(showBar);
+
+    if (showBar) {
+      container.setPosition(enemy.x, enemy.y - 30 * enemy.scaleY);
+      bar.setDisplaySize(24 * pct, 4);
+      bar.setFillStyle(pct < 0.3 ? 0xFF0000 : pct < 0.6 ? 0xFFAA00 : 0x00FF00);
+    }
+  }
+
   private hitEnemy(_proj: any, _enemy: any): void {
     const p = _proj as Phaser.Physics.Arcade.Sprite;
     const e = _enemy as Phaser.Physics.Arcade.Sprite;
@@ -257,6 +326,10 @@ export class GameScene extends Scene {
     const currentHp = e.getData('hp') as number;
     const newHp = currentHp - dmg;
     e.setData('hp', newHp);
+
+    // Hit flash
+    e.setTint(0xFFFFFF);
+    this.time.delayedCall(80, () => e.clearTint());
 
     if (this.saveManager.getSettings().damageNumbers) {
       const color = isCrit ? '#FF0000' : '#FFFFFF';
@@ -288,6 +361,10 @@ export class GameScene extends Scene {
   killEnemy(enemy: Phaser.Physics.Arcade.Sprite): void {
     const data = enemy.getData('enemyData') as EnemyType;
     if (!data) return;
+
+    // Destroy health bar
+    const hpBar = enemy.getData('hpBarContainer') as Phaser.GameObjects.Container;
+    if (hpBar) hpBar.destroy();
 
     enemy.destroy();
     this.kills++;

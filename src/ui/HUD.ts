@@ -18,6 +18,19 @@ export class HUD {
   private weaponIcons: Phaser.GameObjects.Container[] = [];
   private damageOverlay?: Phaser.GameObjects.Rectangle;
 
+  // Minimap
+  private minimapContainer?: Phaser.GameObjects.Container;
+  private minimapGraphics?: Phaser.GameObjects.Graphics;
+  private minimapPlayerDot?: Phaser.GameObjects.Rectangle;
+  private minimapEnemyDots: Phaser.GameObjects.Rectangle[] = [];
+  private showMinimap = true;
+  private player?: Phaser.Physics.Arcade.Sprite;
+  private enemies?: Phaser.Physics.Arcade.Group;
+  private worldW = 2400;
+  private worldH = 2400;
+  private mapW = 160;
+  private mapH = 100;
+
   constructor(scene: Scene, stats: PlayerStats) {
     this.scene = scene;
     this.createHUD(stats);
@@ -60,6 +73,35 @@ export class HUD {
     // Damage flash overlay
     this.damageOverlay = this.scene.add.rectangle(640, 360, 1280, 720, 0xFF0000, 0)
       .setScrollFactor(0).setDepth(40);
+
+    // Minimap
+    this.createMinimap();
+  }
+
+  private createMinimap(): void {
+    const mx = 1240 - this.mapW / 2;
+    const my = 90 + this.mapH / 2;
+
+    this.minimapContainer = this.scene.add.container(mx, my).setScrollFactor(0).setDepth(50);
+
+    const bg = this.scene.add.rectangle(0, 0, this.mapW, this.mapH, 0x111111, 0.7).setStrokeStyle(1, 0x444444);
+    this.minimapGraphics = this.scene.add.graphics();
+    this.minimapContainer.add([bg, this.minimapGraphics]);
+
+    this.minimapPlayerDot = this.scene.add.rectangle(0, 0, 4, 4, 0x00FF00).setOrigin(0.5);
+    this.minimapContainer.add(this.minimapPlayerDot);
+
+    this.minimapContainer.setVisible(this.showMinimap);
+  }
+
+  setMinimapEnabled(enabled: boolean): void {
+    this.showMinimap = enabled;
+    this.minimapContainer?.setVisible(enabled);
+  }
+
+  setMinimapRefs(player: Phaser.Physics.Arcade.Sprite, enemies: Phaser.Physics.Arcade.Group): void {
+    this.player = player;
+    this.enemies = enemies;
   }
 
   update(hp: number, maxHp: number, xp: number, xpToLevel: number, level: number, scrap: number, wave: number, time: number): void {
@@ -84,6 +126,47 @@ export class HUD {
     const mins = Math.floor(time / 60);
     const secs = time % 60;
     this.timeText.setText(`${mins}:${secs.toString().padStart(2, '0')}`);
+
+    // Minimap
+    this.updateMinimap();
+  }
+
+  private updateMinimap(): void {
+    if (!this.showMinimap || !this.minimapGraphics || !this.player) return;
+
+    this.minimapGraphics.clear();
+
+    // Player dot
+    const px = (this.player.x / this.worldW) * this.mapW - this.mapW / 2;
+    const py = (this.player.y / this.worldH) * this.mapH - this.mapH / 2;
+    this.minimapPlayerDot!.setPosition(px, py);
+
+    // World bounds outline
+    this.minimapGraphics.lineStyle(1, 0x666666);
+    this.minimapGraphics.strokeRect(-this.mapW / 2, -this.mapH / 2, this.mapW, this.mapH);
+
+    // Enemy dots
+    if (this.enemies) {
+      // Reuse or create dots
+      let idx = 0;
+      this.enemies.children.each((e: any) => {
+        const enemy = e as Phaser.Physics.Arcade.Sprite;
+        if (!enemy.active) return true;
+
+        const ex = (enemy.x / this.worldW) * this.mapW - this.mapW / 2;
+        const ey = (enemy.y / this.worldH) * this.mapH - this.mapH / 2;
+
+        // Only draw if within minimap bounds
+        if (ex >= -this.mapW / 2 && ex <= this.mapW / 2 && ey >= -this.mapH / 2 && ey <= this.mapH / 2) {
+          const isBoss = enemy.getData('isBoss');
+          const color = isBoss ? 0xFF0000 : 0xFF6600;
+          const size = isBoss ? 4 : 2;
+          this.minimapGraphics!.fillStyle(color, 0.8);
+          this.minimapGraphics!.fillRect(ex - size / 2, ey - size / 2, size, size);
+        }
+        return true;
+      });
+    }
   }
 
   updateBossHp(hp: number, maxHp: number): void {

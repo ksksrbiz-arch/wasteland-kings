@@ -66,6 +66,10 @@ export class TitleScene extends Scene {
     // Buttons
     this.createButton(640, 520, 'START RUN', () => this.startGame());
     this.createButton(640, 580, 'THE GARAGE', () => this.scene.start('ShopScene'));
+    this.createButton(640, 640, 'LEADERBOARD', () => this.showLeaderboard());
+    this.createButton(640, 690, 'SETTINGS', () => this.scene.start('SettingsScene'));
+    this.createButton(640, 520, 'START RUN', () => this.startGame());
+    this.createButton(640, 580, 'THE GARAGE', () => this.scene.start('ShopScene'));
     this.createButton(640, 640, 'SETTINGS', () => this.scene.start('SettingsScene'));
 
     // Stats
@@ -203,6 +207,45 @@ export class TitleScene extends Scene {
       this.audioManager.pickup();
       callback();
     });
+  }
+
+  private async showLeaderboard(): Promise<void> {
+    const scores = await this.saveManager.getLeaderboard(10);
+
+    const panel = this.add.container(640, 360);
+    const bg = this.add.rectangle(0, 0, 400, 420, 0x111111, 0.95)
+      .setStrokeStyle(2, 0xFF6600);
+    panel.add(bg);
+
+    panel.add(this.add.text(0, -180, 'GLOBAL LEADERBOARD', {
+      fontSize: '20px', fontFamily: 'Courier New', color: '#FF6600', fontStyle: 'bold'
+    }).setOrigin(0.5));
+
+    if (scores.length === 0) {
+      panel.add(this.add.text(0, 0, 'NO SCORES YET\nBE THE FIRST!', {
+        fontSize: '16px', fontFamily: 'Courier New', color: '#888888', align: 'center'
+      }).setOrigin(0.5));
+    } else {
+      scores.forEach((s, i) => {
+        const y = -140 + i * 32;
+        const color = i === 0 ? '#FFD700' : i === 1 ? '#C0C0C0' : i === 2 ? '#CD7F32' : '#AAAAAA';
+        const line = `${(i + 1).toString().padStart(2, ' ')}  ${s.name.padEnd(14, ' ').slice(0, 14)}  ${s.score.toString().padStart(5, ' ')}  W${s.wave}`;
+        panel.add(this.add.text(0, y, line, {
+          fontSize: '14px', fontFamily: 'Courier New', color
+        }).setOrigin(0.5));
+      });
+    }
+
+    const closeBtn = this.add.text(0, 180, '[ CLOSE ]', {
+      fontSize: '16px', fontFamily: 'Courier New', color: '#FF6600', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    closeBtn.setInteractive({ useHandCursor: true });
+    closeBtn.on('pointerover', () => closeBtn.setColor('#FFFFFF'));
+    closeBtn.on('pointerout', () => closeBtn.setColor('#FF6600'));
+    closeBtn.on('pointerdown', () => panel.destroy());
+    panel.add(closeBtn);
+
+    this.audioManager.pickup();
   }
 
   private startGame(): void {
