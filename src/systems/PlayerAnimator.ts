@@ -4,19 +4,18 @@ export class PlayerAnimator {
   private scene: Scene;
   private player: Phaser.Physics.Arcade.Sprite;
 
-  // Animation state
-  private bobTimer = 0;
-  private isMoving = false;
+  // State
   private facingRight = true;
   private recoilTween?: Phaser.Tweens.Tween;
   private idleTween?: Phaser.Tweens.Tween;
-  private dashTiltTween?: Phaser.Tweens.Tween;
+  private dashTween?: Phaser.Tweens.Tween;
+  private hitTween?: Phaser.Tweens.Tween;
 
-  // Config
-  private readonly bobSpeed = 12; // cycles per second-ish
-  private readonly bobAmount = 3; // pixels
-  private readonly recoilDistance = 6;
-  private readonly recoilDuration = 80;
+  // Config – tuned for visibility at 0.12 base scale
+  private readonly BASE_SCALE = 0.12;
+  private readonly RECOIL_ROTATION = 12; // degrees
+  private readonly RECOIL_DURATION = 90;
+  private readonly HIT_SCALE_BUMP = 0.16; // temporary scale-up on hit
 
   constructor(scene: Scene, player: Phaser.Physics.Arcade.Sprite) {
     this.scene = scene;
@@ -24,119 +23,110 @@ export class PlayerAnimator {
     this.startIdleBreathing();
   }
 
-  update(delta: number, vx: number, vy: number, isDashing: boolean): void {
-    const wasMoving = this.isMoving;
-    this.isMoving = vx !== 0 || vy !== 0;
+  update(_delta: number, vx: number, vy: number, isDashing: boolean): void {
+    const isMoving = vx !== 0 || vy !== 0;
 
-    // ── FACING DIRECTION ──
-    // Priority: movement direction > current facing
-    if (vx > 0.1) {
-      this.facingRight = true;
-    } else if (vx < -0.1) {
-      this.facingRight = false;
-    }
+    // ── FACING ──
+    // Only flip when not mid-recoil so the kick direction reads clearly
+    if (vx > 0.1) this.facingRight = true;
+    else if (vx < -0.1) this.facingRight = false;
 
-    // Apply flip (only if not mid-recoil to avoid visual pop)
     if (!this.recoilTween || !this.recoilTween.isPlaying()) {
       this.player.setFlipX(!this.facingRight);
     }
 
-    // ── MOVEMENT BOBBING ──
-    if (this.isMoving && !isDashing) {
-      this.bobTimer += delta / 1000;
-      const bobY = Math.sin(this.bobTimer * this.bobSpeed) * this.bobAmount;
-      // Apply bob as a visual offset (don't affect physics body)
-      this.player.setY(this.player.y + bobY - (this.player.getData('lastBobY') || 0));
-      this.player.setData('lastBobY', bobY);
-    } else {
-      // Reset bob offset
-      const lastBob = this.player.getData('lastBobY') || 0;
-      if (lastBob !== 0) {
-        this.player.setY(this.player.y - lastBob);
-        this.player.setData('lastBobY', 0);
-      }
-      this.bobTimer = 0;
-    }
-
-    // ── IDLE BREATHING ──
-    if (!this.isMoving && !isDashing) {
+    // ── IDLE vs MOVING ──
+    if (!isMoving && !isDashing) {
       if (!this.idleTween || !this.idleTween.isPlaying()) {
         this.startIdleBreathing();
       }
     } else {
       if (this.idleTween && this.idleTween.isPlaying()) {
         this.idleTween.stop();
-        this.player.setScale(0.12, 0.12); // Reset to base
+        this.resetScale();
       }
     }
   }
 
-  /** Call when a weapon fires — triggers recoil kickback */
+  /** Triggered by WeaponSystem every time a weapon fires */
   playRecoil(aimAngle: number): void {
-    // Cancel existing recoil
     if (this.recoilTween && this.recoilTween.isPlaying()) {
       this.recoilTween.stop();
     }
 
-    // Determine recoil direction (opposite to aim)
-    const recoilX = Math.cos(aimAngle + Math.PI) * this.recoilDistance;
-    const recoilY = Math.sin(aimAngle + Math.PI) * this.recoilDistance;
+    // Rotate away from aim direction (opposite to where we're shooting)
+    const recoilAngle = Phaser.Math.RadToDeg(aimAngle) + 180;
+    const lean = Phaser.Math.Angle.ShortestBetween(
+      Phaser.Math.RadToDeg(aimAngle),
+      recoilAngle
+    );
+    const sign = this.facingRight ? -1 : 1;
 
-    const startX = this.player.x;
-    const startY = this.player.y;
-
-    // Quick kick back
-    this.player.x += recoilX;
-    this.player.y += recoilY;
-
-    // Tween back to original position
     this.recoilTween = this.scene.tweens.add({
       targets: this.player,
-      x: startX,
-      y: startY,
-      duration: this.recoilDuration,
-      ease: 'Sine.easeOut'
+      angle: lean * 0.3 * sign,
+      scaleX: this.BASE_SCALE * 0.85,
+      scaleY: this.BASE_SCALE * 1.1,
+      duration: this.RECOIL_DURATION,
+      yoyo: true,
+      hold: 30,
+      ease: 'Power2',
+      onComplete: () => {
+        this.player.angle = 0;
+        this.resetScale();
+      }
     });
   }
 
-  /** Call when player takes damage */
+  /** Triggered when player takes damage */
   playHitReaction(): void {
-    // Flash red
+    // Red flash
     this.player.setTint(0xFF0000);
-    this.scene.time.delayedCall(120, () => {
+    this.scene.time.delayedCall(150, () => {
       if (this.player.active) this.player.clearTint();
     });
 
-    // Brief shake
-    this.scene.tweens.add({
+    // Stop any conflicting tween
+    if (this.hitTween && this.hitTween.isPlaying()) {
+      this.hitTween.stop();
+    }
+
+    // Brief aggressive scale pulse + rotation wobble
+    this.hitTween = this.scene.tweens.add({
       targets: this.player,
-      x: this.player.x + Phaser.Math.Between(-5, 5),
-      y: this.player.y + Phaser.Math.Between(-5, 5),
-      duration: 50,
+      scaleX: this.HIT_SCALE_BUMP,
+      scaleY: this.HIT_SCALE_BUMP,
+      angle: Phaser.Math.Between(-10, 10),
+      duration: 80,
       yoyo: true,
-      repeat: 2,
+      repeat: 1,
+      ease: 'Sine.easeInOut',
       onComplete: () => {
-        // Ensure position is clean
+        this.player.angle = 0;
+        this.resetScale();
       }
     });
   }
 
   /** Call when dash starts */
   playDashStart(directionX: number, directionY: number): void {
-    // Cancel idle
     if (this.idleTween && this.idleTween.isPlaying()) {
       this.idleTween.stop();
     }
 
-    // Lean into dash direction
     const angle = Math.atan2(directionY, directionX);
-    const tilt = angle * (180 / Math.PI);
+    const tiltDeg = Phaser.Math.RadToDeg(angle) * 0.25;
 
-    this.dashTiltTween = this.scene.tweens.add({
+    if (this.dashTween && this.dashTween.isPlaying()) {
+      this.dashTween.stop();
+    }
+
+    this.dashTween = this.scene.tweens.add({
       targets: this.player,
-      angle: tilt * 0.3, // Subtle lean, not full rotation
-      scaleX: 0.10, // Stretch slightly
-      scaleY: 0.14,
+      angle: tiltDeg,
+      scaleX: this.BASE_SCALE * 0.9,
+      scaleY: this.BASE_SCALE * 1.15,
+      alpha: 0.7,
       duration: 100,
       ease: 'Power2'
     });
@@ -144,40 +134,42 @@ export class PlayerAnimator {
 
   /** Call when dash ends */
   playDashEnd(): void {
-    if (this.dashTiltTween && this.dashTiltTween.isPlaying()) {
-      this.dashTiltTween.stop();
+    if (this.dashTween && this.dashTween.isPlaying()) {
+      this.dashTween.stop();
     }
 
     this.scene.tweens.add({
       targets: this.player,
       angle: 0,
-      scaleX: 0.12,
-      scaleY: 0.12,
-      duration: 150,
+      scaleX: this.BASE_SCALE,
+      scaleY: this.BASE_SCALE,
+      alpha: 1,
+      duration: 120,
       ease: 'Back.easeOut'
     });
   }
 
-  /** Face a specific angle (for aiming at enemies) */
+  /** Face a specific angle (for aiming) */
   faceAngle(angle: number): void {
-    // Only update facing if angle is significantly left or right
     const cos = Math.cos(angle);
-    if (cos > 0.2) {
-      this.facingRight = true;
-    } else if (cos < -0.2) {
-      this.facingRight = false;
-    }
+    if (cos > 0.2) this.facingRight = true;
+    else if (cos < -0.2) this.facingRight = false;
     this.player.setFlipX(!this.facingRight);
   }
 
   private startIdleBreathing(): void {
     this.idleTween = this.scene.tweens.add({
       targets: this.player,
-      scaleY: { from: 0.12, to: 0.125 },
-      duration: 800,
+      scaleY: { from: this.BASE_SCALE, to: this.BASE_SCALE * 1.08 },
+      scaleX: { from: this.BASE_SCALE, to: this.BASE_SCALE * 0.96 },
+      duration: 700,
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut'
     });
+  }
+
+  private resetScale(): void {
+    this.player.setScale(this.BASE_SCALE, this.BASE_SCALE);
   }
 }

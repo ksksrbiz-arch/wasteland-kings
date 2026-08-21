@@ -582,6 +582,7 @@ export class GameScene extends Scene {
 
     if (this.playerStats.hp <= 0) {
       this.playerStats.hp = 0;
+      this.endGame(false);
     }
   }
 
