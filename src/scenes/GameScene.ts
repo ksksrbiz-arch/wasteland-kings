@@ -95,9 +95,10 @@ export class GameScene extends Scene {
     this.cameras.main.setBounds(0, 0, 2400, 2400);
     this.physics.world.setBounds(0, 0, 2400, 2400);
 
-    // Ground tile background
+    // Ground tile background — scale up to hide seams
     const ground = this.add.tileSprite(1200, 1200, 2400, 2400, 'ground_tile');
     ground.setDepth(0);
+    ground.setTileScale(2, 2);
 
     // Scenery
     for (let i = 0; i < 50; i++) {
@@ -117,7 +118,15 @@ export class GameScene extends Scene {
     this.player = this.physics.add.sprite(1200, 1200, tex);
     this.player.setCollideWorldBounds(true);
     this.player.setDepth(10);
-    this.player.setScale(0.06);
+    this.player.setScale(0.08);
+
+    // Player drop shadow for contrast against ground
+    const shadow = this.add.ellipse(1200, 1208, 50, 20, 0x000000, 0.4);
+    shadow.setDepth(9);
+    this.time.addEvent({
+      delay: 16, loop: true,
+      callback: () => { shadow.setPosition(this.player.x, this.player.y + 8); }
+    });
 
     // Player glow for visibility
     this.playerGlow = this.add.graphics();

@@ -79,8 +79,9 @@ export class HUD {
   }
 
   private createMinimap(): void {
-    const mx = 1240 - this.mapW / 2;
-    const my = 90 + this.mapH / 2;
+    // Place minimap on the left side, below the XP bar (visible and unobstructed)
+    const mx = 40 + this.mapW / 2;   // left padding
+    const my = 110 + this.mapH / 2;  // below XP bar + level text
 
     this.minimapContainer = this.scene.add.container(mx, my).setScrollFactor(0).setDepth(50);
 
@@ -147,7 +148,6 @@ export class HUD {
 
     // Enemy dots
     if (this.enemies) {
-      // Reuse or create dots
       let idx = 0;
       this.enemies.children.each((e: any) => {
         const enemy = e as Phaser.Physics.Arcade.Sprite;

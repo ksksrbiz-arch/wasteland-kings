@@ -70,8 +70,8 @@ export class EnemySpawner {
     enemy.setDepth(5);
     this.enemies.add(enemy);
 
-    // 1024px sprites: base scale 0.05, larger for tanks
-    const baseScale = 0.05;
+    // 1024px sprites: base scale 0.07, larger for tanks
+    const baseScale = 0.07;
     const scale = baseScale * (type.radius / 12);
     enemy.setScale(scale);
   }
