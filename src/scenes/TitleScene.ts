@@ -104,7 +104,7 @@ export class TitleScene extends Scene {
       container.add(bg);
 
       const tex = char.id === 'scrapper' ? 'player_scrapper' : `player_${char.id}`;
-      const sprite = this.add.image(0, -30, tex).setScale(0.06);
+      const sprite = this.add.image(0, -30, tex).setScale(0.08);
       container.add(sprite);
 
       const name = this.add.text(0, 20, char.name, {

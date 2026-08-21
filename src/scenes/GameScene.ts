@@ -116,7 +116,7 @@ export class GameScene extends Scene {
     this.player = this.physics.add.sprite(1200, 1200, tex);
     this.player.setCollideWorldBounds(true);
     this.player.setDepth(10);
-    this.player.setScale(0.035);
+    this.player.setScale(0.06);
 
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
 
@@ -484,7 +484,7 @@ export class GameScene extends Scene {
     this.boss.setData('phase', 1);
     this.boss.setData('chargeTimer', 0);
     this.boss.setData('summonTimer', 0);
-    this.boss.setScale(0.06);
+    this.boss.setScale(0.08);
     this.enemies.add(this.boss);
 
     this.hud.showBossWarning();
