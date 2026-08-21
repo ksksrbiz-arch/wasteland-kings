@@ -42,9 +42,32 @@ export class EnemySpawner {
     }
 
     this.enemies.children.each((e: any) => {
-      this.updateEnemy(e as Phaser.Physics.Arcade.Sprite, delta);
+      const enemy = e as Phaser.Physics.Arcade.Sprite;
+      this.updateEnemy(enemy, delta);
+      this.updateEnemyVisuals(enemy, delta);
       return true;
     });
+  }
+
+  /** Faces the enemy toward its movement direction and gives it a light walking bob */
+  private updateEnemyVisuals(enemy: Phaser.Physics.Arcade.Sprite, delta: number): void {
+    if (!enemy.active || !enemy.body) return;
+    const baseScale = enemy.getData('baseScale') as number;
+    if (!baseScale) return;
+
+    const vel = (enemy.body as Phaser.Physics.Arcade.Body).velocity;
+    if (vel.x > 5) enemy.setFlipX(false);
+    else if (vel.x < -5) enemy.setFlipX(true);
+
+    const speed = Math.sqrt(vel.x * vel.x + vel.y * vel.y);
+    if (speed > 5) {
+      const bobTimer = (enemy.getData('bobTimer') as number || 0) + delta * (0.4 + speed * 0.01);
+      enemy.setData('bobTimer', bobTimer);
+      const bob = Math.sin(bobTimer * 0.02) * 0.08;
+      enemy.setScale(baseScale * (1 + bob), baseScale * (1 - bob));
+    } else {
+      enemy.setScale(baseScale, baseScale);
+    }
   }
 
   private spawnEnemy(wave: number): void {
@@ -86,6 +109,7 @@ export class EnemySpawner {
     const baseScale = 0.14;
     const scale = baseScale * (type.radius / 12);
     enemy.setScale(scale);
+    enemy.setData('baseScale', scale);
 
     // Colored outline ring for visibility
     const outlineColor = type.color;

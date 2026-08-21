@@ -8,6 +8,7 @@ export class PlayerAnimator {
   private facingRight = true;
   private recoilTween?: Phaser.Tweens.Tween;
   private idleTween?: Phaser.Tweens.Tween;
+  private walkTween?: Phaser.Tweens.Tween;
   private dashTween?: Phaser.Tweens.Tween;
   private hitTween?: Phaser.Tweens.Tween;
 
@@ -35,17 +36,41 @@ export class PlayerAnimator {
       this.player.setFlipX(!this.facingRight);
     }
 
-    // ── IDLE vs MOVING ──
-    if (!isMoving && !isDashing) {
+    // ── IDLE vs WALK vs DASH ──
+    if (isDashing) {
+      this.stopLoopingTweens();
+    } else if (isMoving) {
+      if (this.idleTween && this.idleTween.isPlaying()) this.idleTween.stop();
+      if (!this.walkTween || !this.walkTween.isPlaying()) {
+        this.startWalkCycle();
+      }
+    } else {
+      if (this.walkTween && this.walkTween.isPlaying()) {
+        this.walkTween.stop();
+        this.resetScale();
+      }
       if (!this.idleTween || !this.idleTween.isPlaying()) {
         this.startIdleBreathing();
       }
-    } else {
-      if (this.idleTween && this.idleTween.isPlaying()) {
-        this.idleTween.stop();
-        this.resetScale();
-      }
     }
+  }
+
+  /** Stop any looping (idle/walk) tween so a one-shot effect can take over the sprite cleanly */
+  private stopLoopingTweens(): void {
+    if (this.idleTween && this.idleTween.isPlaying()) this.idleTween.stop();
+    if (this.walkTween && this.walkTween.isPlaying()) this.walkTween.stop();
+  }
+
+  private startWalkCycle(): void {
+    this.walkTween = this.scene.tweens.add({
+      targets: this.player,
+      scaleY: { from: this.BASE_SCALE * 0.92, to: this.BASE_SCALE * 1.1 },
+      scaleX: { from: this.BASE_SCALE * 1.06, to: this.BASE_SCALE * 0.96 },
+      duration: 160,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
   }
 
   /** Triggered by WeaponSystem every time a weapon fires */
@@ -53,6 +78,7 @@ export class PlayerAnimator {
     if (this.recoilTween && this.recoilTween.isPlaying()) {
       this.recoilTween.stop();
     }
+    this.stopLoopingTweens();
 
     // Rotate away from aim direction (opposite to where we're shooting)
     const recoilAngle = Phaser.Math.RadToDeg(aimAngle) + 180;
@@ -90,6 +116,7 @@ export class PlayerAnimator {
     if (this.hitTween && this.hitTween.isPlaying()) {
       this.hitTween.stop();
     }
+    this.stopLoopingTweens();
 
     // Brief aggressive scale pulse + rotation wobble
     this.hitTween = this.scene.tweens.add({
@@ -110,9 +137,7 @@ export class PlayerAnimator {
 
   /** Call when dash starts */
   playDashStart(directionX: number, directionY: number): void {
-    if (this.idleTween && this.idleTween.isPlaying()) {
-      this.idleTween.stop();
-    }
+    this.stopLoopingTweens();
 
     const angle = Math.atan2(directionY, directionX);
     const tiltDeg = Phaser.Math.RadToDeg(angle) * 0.25;

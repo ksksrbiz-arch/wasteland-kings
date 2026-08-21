@@ -24,9 +24,6 @@ export class PreloadScene extends Scene {
     this.load.image('enemy_charger', 'assets/enemy_charger.png');
     this.load.image('enemy_elite', 'assets/enemy_elite.png');
     this.load.image('enemy_summoner', 'assets/enemy_summoner.png');
-    this.load.image('enemy_runner', 'assets/enemy_runner.png');
-    this.load.image('enemy_tank', 'assets/enemy_tank.png');
-    this.load.image('enemy_ranged', 'assets/enemy_ranged.png');
 
     // ── Procedural fallback textures (no art yet) ──
     this.generateTextures();
@@ -161,62 +158,6 @@ export class PreloadScene extends Scene {
     g.fillStyle(0xFFD700);
     g.fillRect(0, 0, 200, 24);
     g.generateTexture('bar_gold', 200, 24);
-
-    // Missing enemy art — procedural fallback with outlines and detail
-    const missingEnemies = [
-      { id: 'charger', c: 0xDC143C, glow: 0xFF0000, shape: 'triangle' },
-      { id: 'elite', c: 0xFFD700, glow: 0xFFAA00, shape: 'star' },
-      { id: 'summoner', c: 0x4B0082, glow: 0x8A2BE2, shape: 'diamond' }
-    ];
-
-    for (const e of missingEnemies) {
-      g.clear();
-      // Outer glow ring
-      g.fillStyle(e.glow, 0.4);
-      if (e.shape === 'triangle') {
-        g.fillTriangle(16, 2, 2, 30, 30, 30);
-      } else if (e.shape === 'diamond') {
-        g.fillTriangle(16, 2, 30, 16, 16, 30);
-        g.fillTriangle(16, 2, 2, 16, 16, 30);
-      } else if (e.shape === 'star') {
-        const cx = 16, cy = 16, outerR = 14, innerR = 6;
-        g.beginPath();
-        for (let i = 0; i < 10; i++) {
-          const r = i % 2 === 0 ? outerR : innerR;
-          const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-          if (i === 0) g.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-          else g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-        }
-        g.closePath();
-        g.fillPath();
-      }
-      // Inner body
-      g.fillStyle(e.c);
-      if (e.shape === 'triangle') {
-        g.fillTriangle(16, 6, 6, 26, 26, 26);
-        g.fillStyle(0xFFFFFF, 0.3);
-        g.fillTriangle(16, 6, 11, 16, 21, 16);
-      } else if (e.shape === 'diamond') {
-        g.fillTriangle(16, 6, 26, 16, 16, 26);
-        g.fillTriangle(16, 6, 6, 16, 16, 26);
-        g.fillStyle(0xFFFFFF, 0.3);
-        g.fillCircle(16, 16, 3);
-      } else if (e.shape === 'star') {
-        const cx = 16, cy = 16, outerR = 10, innerR = 4;
-        g.beginPath();
-        for (let i = 0; i < 10; i++) {
-          const r = i % 2 === 0 ? outerR : innerR;
-          const a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-          if (i === 0) g.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-          else g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
-        }
-        g.closePath();
-        g.fillPath();
-        g.fillStyle(0xFFFFFF, 0.4);
-        g.fillCircle(16, 16, 2);
-      }
-      g.generateTexture(`enemy_${e.id}`, 32, 32);
-    }
 
     // Virtual joystick
     g.clear();
