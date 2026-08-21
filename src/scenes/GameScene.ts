@@ -90,6 +90,36 @@ export class GameScene extends Scene {
     this.saveManager = this.registry.get('saveManager');
     this.audioManager = this.registry.get('audioManager');
 
+    // This Scene instance is reused across runs (Phaser only constructs it once),
+    // so all run-scoped state must be reset here or it leaks into the next run.
+    this.playerStats = {
+      hp: 100, maxHp: 100, speed: 160, damage: 1, fireRate: 1,
+      pickupRadius: 80, critChance: 0.05, critDamage: 1.5, regen: 0, armor: 0,
+      xpBonus: 1, scrapBonus: 1
+    };
+    this.xp = 0;
+    this.xpToLevel = 50;
+    this.level = 1;
+    this.scrap = 0;
+    this.wave = 1;
+    this.kills = 0;
+    this.runTime = 0;
+    this.damageTaken = 0;
+    this.isPaused = false;
+    this.isGameOver = false;
+    this.isWon = false;
+    this.bossSpawned = false;
+    this.bossDefeated = false;
+    this.tempWeapons = [];
+    this.biomeShifted = false;
+    this.hazards = [];
+    this.hazardTimer = 0;
+    this.crateSpawnTimer = 0;
+    this.weapons = [];
+    this.passives = [];
+    this.boss = undefined;
+    this.joyStick = undefined;
+
     const cs = this.character.stats;
     if (cs.damage) this.playerStats.damage *= cs.damage;
     if (cs.speed) this.playerStats.speed *= cs.speed;
@@ -276,14 +306,21 @@ export class GameScene extends Scene {
       }
     }
 
-    // Apply movement
+    // Apply movement — lerp toward the target velocity instead of snapping,
+    // so starting/stopping has a bit of weight instead of feeling teleport-like.
     if (!this.dashSystem.isCurrentlyDashing()) {
+      let targetVX = 0, targetVY = 0;
       if (vx !== 0 || vy !== 0) {
         const len = Math.sqrt(vx * vx + vy * vy) || 1;
-        this.player.setVelocity((vx / len) * this.playerStats.speed, (vy / len) * this.playerStats.speed);
-      } else {
-        this.player.setVelocity(0);
+        targetVX = (vx / len) * this.playerStats.speed;
+        targetVY = (vy / len) * this.playerStats.speed;
       }
+      const body = this.player.body as Phaser.Physics.Arcade.Body;
+      const t = Math.min(1, delta / 80);
+      this.player.setVelocity(
+        Phaser.Math.Linear(body.velocity.x, targetVX, t),
+        Phaser.Math.Linear(body.velocity.y, targetVY, t)
+      );
     }
     this.dashSystem.update(delta);
     this.hud.updateDashCharges(this.dashSystem.getAvailableCharges(), this.dashSystem.getChargeCooldowns(), this.dashSystem.getMaxCharges());
@@ -291,6 +328,13 @@ export class GameScene extends Scene {
     this.playerAnimator.update(delta, vx, vy, this.dashSystem.isCurrentlyDashing());
     this.playerGlow.setPosition(this.player.x, this.player.y);
     this.updateTempWeapons(delta);
+
+    const frameWeapons = [...this.weapons];
+    for (const tw of this.tempWeapons) {
+      frameWeapons.push(tw.weapon);
+    }
+    this.weaponSystem.update(time, delta, frameWeapons, this.playerStats, this.passives);
+    this.enemySpawner.update(time, delta, this.wave, this.bossSpawned);
 
     if (this.boss && this.boss.active) this.updateBoss();
 
@@ -554,6 +598,15 @@ export class GameScene extends Scene {
 
     const scrapAmount = Math.floor(data.scrap * this.playerStats.scrapBonus * comboMult);
     this.spawnPickup(enemy.x, enemy.y, 'scrap', scrapAmount);
+
+    const xpAmount = Math.max(1, Math.round(data.xp * this.playerStats.xpBonus * comboMult));
+    const gemCount = Math.min(5, xpAmount);
+    const baseGem = Math.floor(xpAmount / gemCount);
+    const remainder = xpAmount - baseGem * gemCount;
+    for (let i = 0; i < gemCount; i++) {
+      const value = baseGem + (i < remainder ? 1 : 0);
+      this.spawnPickup(enemy.x + Phaser.Math.Between(-20, 20), enemy.y + Phaser.Math.Between(-20, 20), 'xp', value);
+    }
 
     if (data.id === 'elite' && Math.random() < 0.35) {
       this.crateSystem.spawnCrate(enemy.x, enemy.y);

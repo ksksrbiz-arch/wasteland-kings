@@ -16,8 +16,11 @@ export class TitleScene extends Scene {
 
   create(): void {
     this.saveManager = this.registry.get('saveManager');
-    this.audioManager = new AudioManager();
-    this.registry.set('audioManager', this.audioManager);
+    this.audioManager = this.registry.get('audioManager');
+    if (!this.audioManager) {
+      this.audioManager = new AudioManager();
+      this.registry.set('audioManager', this.audioManager);
+    }
 
     // Title background
     const bg = this.add.image(640, 360, 'title_bg');
@@ -68,13 +71,6 @@ export class TitleScene extends Scene {
     this.createButton(640, 580, 'THE GARAGE', () => this.scene.start('ShopScene'));
     this.createButton(640, 640, 'LEADERBOARD', () => this.showLeaderboard());
     this.createButton(640, 690, 'SETTINGS', () => this.scene.start('SettingsScene'));
-    this.createButton(640, 520, 'START RUN', () => this.startGame());
-    this.createButton(640, 580, 'THE GARAGE', () => this.scene.start('ShopScene'));
-    this.createButton(640, 640, 'LEADERBOARD', () => this.showLeaderboard());
-    this.createButton(640, 690, 'SETTINGS', () => this.scene.start('SettingsScene'));
-    this.createButton(640, 520, 'START RUN', () => this.startGame());
-    this.createButton(640, 580, 'THE GARAGE', () => this.scene.start('ShopScene'));
-    this.createButton(640, 640, 'SETTINGS', () => this.scene.start('SettingsScene'));
 
     // Stats
     const stats = this.saveManager.getData();

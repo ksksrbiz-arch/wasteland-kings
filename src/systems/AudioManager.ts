@@ -4,7 +4,6 @@ export class AudioManager {
   private sfxGain: GainNode;
   private musicGain: GainNode;
   private muted: boolean = false;
-  private musicOsc?: OscillatorNode;
   private musicInterval?: number;
 
   constructor() {
@@ -98,7 +97,7 @@ export class AudioManager {
   }
 
   startMusic(): void {
-    if (this.musicOsc) return;
+    if (this.musicInterval) return;
     const playNote = (freq: number, dur: number, delay: number) => {
       setTimeout(() => {
         if (this.muted) return;
