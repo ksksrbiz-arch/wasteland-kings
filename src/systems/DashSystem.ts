@@ -94,14 +94,17 @@ export class DashSystem {
     const speed = (this.player.body?.velocity?.length?.() || 160) * this.dashSpeedMult;
     this.player.setVelocity(dx * speed, dy * speed);
 
-    // Visual: afterimages
+    // Visual: high-contrast afterimages
     this.spawnAfterimages();
 
-    // Visual: flash white
-    this.player.setTint(0xFFFFFF);
+    // Visual: i-frame safety shield flash
+    this.spawnIFrameShield();
 
     // I-frames start immediately, peak at dash apex
     this.invulnerable = true;
+
+    // Visual: flash white
+    this.player.setTint(0xFFFFFF);
 
     // End dash movement after short duration
     this.scene.time.delayedCall(this.dashDuration, () => {
@@ -123,28 +126,77 @@ export class DashSystem {
 
   private spawnAfterimages(): void {
     const tex = this.player.texture.key;
-    for (let i = 0; i < 4; i++) {
-      this.scene.time.delayedCall(i * 40, () => {
+    for (let i = 0; i < 5; i++) {
+      this.scene.time.delayedCall(i * 30, () => {
         if (!this.player.active) return;
         const ghost = this.scene.add.image(this.player.x, this.player.y, tex)
-          .setScale(this.player.scaleX, this.player.scaleY)
-          .setAlpha(0.5 - i * 0.1)
-          .setTint(0x00FFFF)
+          .setScale(this.player.scaleX * 1.05, this.player.scaleY * 1.05)
+          .setAlpha(0.7 - i * 0.12)
+          .setTint(0xFFFFFF)
+          .setBlendMode(Phaser.BlendModes.ADD)
           .setDepth(8);
         this.afterimages.push(ghost);
 
         this.scene.tweens.add({
           targets: ghost,
           alpha: 0,
-          scaleX: this.player.scaleX * 0.8,
-          scaleY: this.player.scaleY * 0.8,
-          duration: 200,
+          scaleX: this.player.scaleX * 0.6,
+          scaleY: this.player.scaleY * 0.6,
+          duration: 180,
           onComplete: () => ghost.destroy()
         });
       });
     }
   }
 
+  private spawnIFrameShield(): void {
+    // Bright white flash at dash start
+    const flash = this.scene.add.ellipse(this.player.x, this.player.y, 70, 70, 0xFFFFFF, 0.9)
+      .setDepth(12)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    this.scene.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      duration: 150,
+      onComplete: () => flash.destroy()
+    });
+
+    // Cyan safety ring that persists for the i-frame window
+    const shield = this.scene.add.ellipse(this.player.x, this.player.y, 60, 60)
+      .setStrokeStyle(3, 0x00FFFF, 0.9)
+      .setDepth(11)
+      .setBlendMode(Phaser.BlendModes.ADD);
+
+    // Track shield to player
+    const tracker = this.scene.time.addEvent({
+      delay: 16,
+      loop: true,
+      callback: () => {
+        if (shield.active && this.player.active) {
+          shield.setPosition(this.player.x, this.player.y);
+        } else {
+          tracker.destroy();
+        }
+      }
+    });
+
+    // Fade out shield when i-frames end
+    this.scene.time.delayedCall(this.iFrameDuration, () => {
+      this.scene.tweens.add({
+        targets: shield,
+        alpha: 0,
+        scaleX: 1.3,
+        scaleY: 1.3,
+        duration: 100,
+        onComplete: () => {
+          shield.destroy();
+          tracker.destroy();
+        }
+      });
+    });
+  }
   getCharges(): number { return this.maxCharges; }
   getMaxCharges(): number { return this.maxCharges; }
 }

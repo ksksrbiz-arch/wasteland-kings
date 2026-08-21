@@ -153,7 +153,7 @@ export class HUD {
       this.dashCooldownArcs[i].setVisible(!ready);
       if (!ready) {
         const pct = Math.min(1, 1 - (cooldowns[i] / 3500));
-        this.dashCooldownArcs[i].setAngle(0, pct * 360);
+        this.dashCooldownArcs[i].setScale(pct, pct);
       }
     }
   }

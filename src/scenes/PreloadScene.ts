@@ -21,6 +21,12 @@ export class PreloadScene extends Scene {
     this.load.image('enemy_runner', 'assets/enemy_runner.png');
     this.load.image('enemy_tank', 'assets/enemy_tank.png');
     this.load.image('enemy_ranged', 'assets/enemy_ranged.png');
+    this.load.image('enemy_charger', 'assets/enemy_charger.png');
+    this.load.image('enemy_elite', 'assets/enemy_elite.png');
+    this.load.image('enemy_summoner', 'assets/enemy_summoner.png');
+    this.load.image('enemy_runner', 'assets/enemy_runner.png');
+    this.load.image('enemy_tank', 'assets/enemy_tank.png');
+    this.load.image('enemy_ranged', 'assets/enemy_ranged.png');
 
     // ── Procedural fallback textures (no art yet) ──
     this.generateTextures();

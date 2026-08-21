@@ -12,7 +12,7 @@ export class PlayerAnimator {
   private hitTween?: Phaser.Tweens.Tween;
 
   // Config – tuned for visibility at 0.12 base scale
-  private readonly BASE_SCALE = 0.12;
+  private readonly BASE_SCALE = 0.15;
   private readonly RECOIL_ROTATION = 12; // degrees
   private readonly RECOIL_DURATION = 90;
   private readonly HIT_SCALE_BUMP = 0.16; // temporary scale-up on hit

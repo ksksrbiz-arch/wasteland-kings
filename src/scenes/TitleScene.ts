@@ -70,6 +70,10 @@ export class TitleScene extends Scene {
     this.createButton(640, 690, 'SETTINGS', () => this.scene.start('SettingsScene'));
     this.createButton(640, 520, 'START RUN', () => this.startGame());
     this.createButton(640, 580, 'THE GARAGE', () => this.scene.start('ShopScene'));
+    this.createButton(640, 640, 'LEADERBOARD', () => this.showLeaderboard());
+    this.createButton(640, 690, 'SETTINGS', () => this.scene.start('SettingsScene'));
+    this.createButton(640, 520, 'START RUN', () => this.startGame());
+    this.createButton(640, 580, 'THE GARAGE', () => this.scene.start('ShopScene'));
     this.createButton(640, 640, 'SETTINGS', () => this.scene.start('SettingsScene'));
 
     // Stats

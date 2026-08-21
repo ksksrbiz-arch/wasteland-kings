@@ -32,7 +32,7 @@ export class WeaponSystem {
     this.updateTesla(time, weapons, stats);
   }
 
-  private fire(weapon: WeaponData, stats: PlayerStats, _passives: any[]): void {
+  private fire(weapon: WeaponData, stats: PlayerStats, passives: any[]): void {
     const enemies = this.scene.physics.world.bodies.entries
       .filter((b: any) => b.gameObject?.getData?.('enemyData'))
       .map((b: any) => b.gameObject as Phaser.Physics.Arcade.Sprite)
@@ -41,6 +41,17 @@ export class WeaponSystem {
     if (enemies.length === 0) return;
 
     const damage = weapon.damage * stats.damage;
+
+    // Determine active element from passives
+    let element: 'none' | 'poison' | 'freeze' | 'fire' = weapon.element || 'none';
+    if (element === 'none') {
+      for (const p of passives) {
+        if (p.element && p.element !== 'none') {
+          element = p.element;
+          break;
+        }
+      }
+    }
 
     // Calculate aim angle toward nearest enemy for recoil/animation
     const nearest = this.getNearestEnemy(enemies);
@@ -53,21 +64,21 @@ export class WeaponSystem {
     switch (weapon.id) {
       case 'scrapgun':
       case 'ripper':
-        this.fireScrapgun(weapon, enemies, damage);
+        this.fireScrapgun(weapon, enemies, damage, element);
         break;
       case 'rocket':
       case 'hellfire':
-        this.fireRocket(weapon, enemies, damage);
+        this.fireRocket(weapon, enemies, damage, element);
         break;
       case 'tesla':
       case 'stormcaller':
         break;
       case 'flame':
       case 'inferno':
-        this.fireFlame(weapon, enemies, damage);
+        this.fireFlame(weapon, enemies, damage, element);
         break;
       case 'laser_cannon':
-        this.fireLaserCannon(weapon, enemies, damage);
+        this.fireLaserCannon(weapon, enemies, damage, element);
         break;
     }
 
@@ -77,7 +88,8 @@ export class WeaponSystem {
     else audio.shoot();
   }
 
-  private fireScrapgun(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number): void {
+
+  private fireScrapgun(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number, element: 'none' | 'poison' | 'freeze' | 'fire'): void {
     const count = weapon.projectileCount;
     for (let i = 0; i < count; i++) {
       const target = this.getNearestEnemy(enemies);
@@ -93,11 +105,13 @@ export class WeaponSystem {
       p.setPosition(this.player.x, this.player.y);
       p.setData('damage', damage);
       p.setData('pierce', weapon.pierce);
+      p.setData('element', element);
+      this.applyElementTint(p, element);
       p.setVelocity(Math.cos(finalAngle) * weapon.projectileSpeed, Math.sin(finalAngle) * weapon.projectileSpeed);
     }
   }
 
-  private fireRocket(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number): void {
+  private fireRocket(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number, element: 'none' | 'poison' | 'freeze' | 'fire'): void {
     const count = weapon.projectileCount;
     for (let i = 0; i < count; i++) {
       const target = this.getNearestEnemy(enemies);
@@ -114,6 +128,8 @@ export class WeaponSystem {
       p.setData('pierce', 0);
       p.setData('isExplosive', true);
       p.setData('explosionRadius', 80);
+      p.setData('element', element);
+      this.applyElementTint(p, element);
       p.setVelocity(Math.cos(angle + spread) * weapon.projectileSpeed, Math.sin(angle + spread) * weapon.projectileSpeed);
 
       this.scene.tweens.add({
@@ -134,7 +150,7 @@ export class WeaponSystem {
     }
   }
 
-  private fireFlame(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number): void {
+  private fireFlame(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number, element: 'none' | 'poison' | 'freeze' | 'fire'): void {
     const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, enemies[0].x, enemies[0].y);
     const arc = 0.5;
     const count = 5;
@@ -149,11 +165,13 @@ export class WeaponSystem {
       p.setData('pierce', 999);
       p.setData('lifespan', 500);
       p.setData('created', this.scene.time.now);
+      p.setData('element', element);
+      this.applyElementTint(p, element);
       p.setVelocity(Math.cos(a) * weapon.projectileSpeed, Math.sin(a) * weapon.projectileSpeed);
     }
   }
 
-  private fireLaserCannon(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number): void {
+  private fireLaserCannon(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number, element: 'none' | 'poison' | 'freeze' | 'fire'): void {
     const target = this.getNearestEnemy(enemies);
     if (!target) return;
 
@@ -166,7 +184,8 @@ export class WeaponSystem {
     p.setData('damage', damage);
     p.setData('pierce', weapon.pierce);
     p.setData('isLaser', true);
-    p.setTint(0xFF0000);
+    p.setData('element', element);
+    this.applyElementTint(p, element);
     p.setScale(1.5);
     p.setVelocity(Math.cos(angle) * weapon.projectileSpeed, Math.sin(angle) * weapon.projectileSpeed);
 
@@ -284,6 +303,12 @@ export class WeaponSystem {
       this.teslaArcs.forEach(a => a.destroy());
       this.teslaArcs = [];
     });
+  }
+
+  private applyElementTint(p: Phaser.Physics.Arcade.Sprite, element: 'none' | 'poison' | 'freeze' | 'fire'): void {
+    if (element === 'poison') p.setTint(0x00FF00);
+    else if (element === 'freeze') p.setTint(0x00FFFF);
+    else if (element === 'fire') p.setTint(0xFF4500);
   }
 
   private getNearestEnemy(enemies: Phaser.Physics.Arcade.Sprite[]): Phaser.Physics.Arcade.Sprite | null {

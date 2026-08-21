@@ -82,8 +82,8 @@ export class EnemySpawner {
     enemy.setData('attackState', 'idle'); // idle | winding | attacking
     enemy.setData('windupDuration', type.behavior === 'charge' ? 600 : type.behavior === 'ranged' ? 1200 : 0);
 
-    // 1024px sprites: base scale 0.10 for visibility
-    const baseScale = 0.10;
+    // 1024px sprites: base scale 0.14 for visibility
+    const baseScale = 0.14;
     const scale = baseScale * (type.radius / 12);
     enemy.setScale(scale);
 
@@ -113,6 +113,51 @@ export class EnemySpawner {
     if (shadow) shadow.setPosition(enemy.x, enemy.y + 4 * enemy.scaleY);
 
     const dist = Phaser.Math.Distance.Between(enemy.x, enemy.y, this.player.x, this.player.y);
+
+    // ── ELEMENTAL STATUS EFFECTS ──
+    const element = enemy.getData('element') as 'poison' | 'freeze' | 'fire' | undefined;
+    let elementTimer = enemy.getData('elementTimer') as number || 0;
+    if (element && elementTimer > 0) {
+      elementTimer -= delta;
+      enemy.setData('elementTimer', elementTimer);
+
+      if (element === 'freeze') {
+        // Visual: cyan pulse
+        enemy.setAlpha(0.7 + Math.sin(this.scene.time.now * 0.01) * 0.3);
+      }
+
+      if (elementTimer <= 0) {
+        // Status expired
+        enemy.setData('element', undefined);
+        enemy.clearTint();
+        enemy.setAlpha(1);
+      } else {
+        // Tick damage for poison/fire
+        let tickTimer = enemy.getData('elementTickTimer') as number || 0;
+        tickTimer += delta;
+        if (tickTimer >= 500) {
+          enemy.setData('elementTickTimer', 0);
+          const maxHp = data.hp;
+          const dotDmg = element === 'poison' ? maxHp * 0.03 : element === 'fire' ? maxHp * 0.05 : 0;
+          if (dotDmg > 0) {
+            const hp = enemy.getData('hp') as number;
+            enemy.setData('hp', hp - dotDmg);
+            // Small floating text for DoT
+            const dotTxt = this.scene.add.text(enemy.x, enemy.y - 25, Math.round(dotDmg).toString(), {
+              fontSize: '10px', fontFamily: 'Courier New', color: element === 'poison' ? '#00FF00' : '#FF4500'
+            }).setOrigin(0.5);
+            this.scene.tweens.add({ targets: dotTxt, y: dotTxt.y - 20, alpha: 0, duration: 400, onComplete: () => dotTxt.destroy() });
+
+            if (enemy.getData('hp') <= 0) {
+              (this.scene as any).killEnemy?.(enemy);
+              return;
+            }
+          }
+        } else {
+          enemy.setData('elementTickTimer', tickTimer);
+        }
+      }
+    }
 
     // ── ATTACK TELEGRAPHS ──
     // Charger enemies: flash red and pause briefly before dashing

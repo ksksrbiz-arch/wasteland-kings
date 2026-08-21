@@ -27,6 +27,7 @@ export interface WeaponData {
   maxLevel: number;
   evolutionId?: string;
   requiresPassive?: string;
+  element?: 'none' | 'poison' | 'freeze' | 'fire';
 }
 
 export interface PassiveData {
@@ -37,6 +38,7 @@ export interface PassiveData {
   value: number;
   level: number;
   maxLevel: number;
+  element?: 'none' | 'poison' | 'freeze' | 'fire';
 }
 
 export interface UpgradeOption {
@@ -190,7 +192,10 @@ export const PASSIVES: PassiveData[] = [
   { id: 'overdrive', name: 'Overdrive', description: '+10% Speed', stat: 'speed', value: 0.10, level: 1, maxLevel: 5 },
   { id: 'sparePlating', name: 'Spare Plating', description: '+20% Max HP', stat: 'maxHp', value: 0.20, level: 1, maxLevel: 5 },
   { id: 'fuelTank', name: 'Fuel Tank', description: '+10% Fire Rate', stat: 'fireRate', value: 0.10, level: 1, maxLevel: 5 },
-  { id: 'targetingChip', name: 'Targeting Chip', description: '+5% Crit Chance', stat: 'critChance', value: 0.05, level: 1, maxLevel: 5 }
+  { id: 'targetingChip', name: 'Targeting Chip', description: '+5% Crit Chance', stat: 'critChance', value: 0.05, level: 1, maxLevel: 5 },
+  { id: 'poisonGland', name: 'Poison Gland', description: 'Weapons apply poison (3% maxHP/s)', stat: 'damage', value: 0.05, level: 1, maxLevel: 3, element: 'poison' },
+  { id: 'cryoCell', name: 'Cryo Cell', description: 'Weapons apply freeze (slow 30%)', stat: 'damage', value: 0.05, level: 1, maxLevel: 3, element: 'freeze' },
+  { id: 'ignitionCore', name: 'Ignition Core', description: 'Weapons apply burn (5% maxHP/s)', stat: 'damage', value: 0.05, level: 1, maxLevel: 3, element: 'fire' }
 ];
 
 export const ENEMIES: EnemyType[] = [

@@ -1,3 +1,4 @@
+import { Scene } from 'phaser';
 import { PlayerAnimator } from '../systems/PlayerAnimator';
 import { SaveManager } from '../systems/SaveManager';
 import { AudioManager } from '../systems/AudioManager';
@@ -133,7 +134,6 @@ export class GameScene extends Scene {
     this.projectiles = this.physics.add.group({ defaultKey: 'bullet', maxSize: 300 });
     this.enemyProjectiles = this.physics.add.group({ defaultKey: 'bullet', maxSize: 100 });
     this.enemies = this.physics.add.group();
-    this.enemies = this.physics.add.group();
     this.pickups = this.physics.add.group();
 
     // ── PLAYER ──
@@ -225,9 +225,6 @@ export class GameScene extends Scene {
     this.physics.add.overlap(this.player, this.enemyProjectiles, this.playerHitByProjectile as any, undefined, this);
     this.physics.add.overlap(this.player, this.pickups, this.collectPickup as any, undefined, this);
     this.physics.add.collider(this.enemies, this.enemies);
-    this.physics.add.overlap(this.player, this.enemies, this.playerHit as any, undefined, this);
-    this.physics.add.overlap(this.player, this.pickups, this.collectPickup as any, undefined, this);
-    this.physics.add.collider(this.enemies, this.enemies);
 
     this.input.keyboard!.on('keydown-ESC', () => this.togglePause());
 
@@ -292,7 +289,6 @@ export class GameScene extends Scene {
     this.hud.updateDashCharges(this.dashSystem.getAvailableCharges(), this.dashSystem.getChargeCooldowns(), this.dashSystem.getMaxCharges());
     this.hud.updateCombo(delta);
     this.playerAnimator.update(delta, vx, vy, this.dashSystem.isCurrentlyDashing());
-    this.playerAnimator.update(delta, vx, vy, this.dashSystem.isCurrentlyDashing());
     this.playerGlow.setPosition(this.player.x, this.player.y);
     this.updateTempWeapons(delta);
 
@@ -309,10 +305,10 @@ export class GameScene extends Scene {
     this.enemyProjectiles.children.each((p: any) => {
       const proj = p as Phaser.Physics.Arcade.Sprite;
       if (!proj.active) return true;
-});
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, proj.x, proj.y);
       if (dist > 900) proj.destroy();
       return true;
+    });
 
     this.pickups.children.each((p: any) => {
       const pick = p as Phaser.Physics.Arcade.Sprite;
@@ -556,6 +552,7 @@ export class GameScene extends Scene {
     this.particles.emitParticleAt(enemy.x, enemy.y, 8);
     this.cameras.main.shake(50, 0.005);
 
+    const scrapAmount = Math.floor(data.scrap * this.playerStats.scrapBonus * comboMult);
     this.spawnPickup(enemy.x, enemy.y, 'scrap', scrapAmount);
 
     if (data.id === 'elite' && Math.random() < 0.35) {
@@ -627,6 +624,7 @@ export class GameScene extends Scene {
   }
 
   private collectPickup(_player: any, _pickup: any): void {
+    const p = _pickup as Phaser.Physics.Arcade.Sprite;
 
     const type = p.getData('type') as string;
     const value = p.getData('value') as number;
