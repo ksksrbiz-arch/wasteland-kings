@@ -141,13 +141,23 @@ export class EnemySpawner {
     // ── ELEMENTAL STATUS EFFECTS ──
     const element = enemy.getData('element') as 'poison' | 'freeze' | 'fire' | undefined;
     let elementTimer = enemy.getData('elementTimer') as number || 0;
+    let speedMult = 1;
     if (element && elementTimer > 0) {
       elementTimer -= delta;
       enemy.setData('elementTimer', elementTimer);
 
+      // Colored tint so an active status actually reads on screen. GameScene's
+      // hit-flash briefly overrides this with white every hit, but this runs
+      // every frame so it reasserts itself within a frame of the flash clearing.
       if (element === 'freeze') {
-        // Visual: cyan pulse
+        // Visual: cyan pulse, plus the actual 30% slow the passive promises
         enemy.setAlpha(0.7 + Math.sin(this.scene.time.now * 0.01) * 0.3);
+        speedMult = 0.7;
+        enemy.setTint(0x00FFFF);
+      } else if (element === 'poison') {
+        enemy.setTint(0x00FF00);
+      } else if (element === 'fire') {
+        enemy.setTint(0xFF4500);
       }
 
       if (elementTimer <= 0) {
@@ -156,13 +166,15 @@ export class EnemySpawner {
         enemy.clearTint();
         enemy.setAlpha(1);
       } else {
-        // Tick damage for poison/fire
+        // Tick damage for poison/fire. Ticks run twice a second (every 500ms),
+        // so each tick is half the stated per-second rate (e.g. poison's
+        // "3% maxHP/s" is 1.5% per tick, not the full 3%).
         let tickTimer = enemy.getData('elementTickTimer') as number || 0;
         tickTimer += delta;
         if (tickTimer >= 500) {
           enemy.setData('elementTickTimer', 0);
           const maxHp = data.hp;
-          const dotDmg = element === 'poison' ? maxHp * 0.03 : element === 'fire' ? maxHp * 0.05 : 0;
+          const dotDmg = element === 'poison' ? maxHp * 0.015 : element === 'fire' ? maxHp * 0.025 : 0;
           if (dotDmg > 0) {
             const hp = enemy.getData('hp') as number;
             enemy.setData('hp', hp - dotDmg);
@@ -218,7 +230,7 @@ export class EnemySpawner {
         enemy.setAlpha(1);
         enemy.clearTint();
         const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
-        enemy.setVelocity(Math.cos(angle) * data.speed * 2.5, Math.sin(angle) * data.speed * 2.5);
+        enemy.setVelocity(Math.cos(angle) * data.speed * speedMult * 2.5, Math.sin(angle) * data.speed * speedMult * 2.5);
         enemy.setData('attackTimer', 0);
       }
     }
@@ -246,9 +258,9 @@ export class EnemySpawner {
       // Kite: keep distance
       const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
       if (dist < 200) {
-        enemy.setVelocity(-Math.cos(angle) * data.speed, -Math.sin(angle) * data.speed);
+        enemy.setVelocity(-Math.cos(angle) * data.speed * speedMult, -Math.sin(angle) * data.speed * speedMult);
       } else if (dist > 350) {
-        enemy.setVelocity(Math.cos(angle) * data.speed * 0.5, Math.sin(angle) * data.speed * 0.5);
+        enemy.setVelocity(Math.cos(angle) * data.speed * speedMult * 0.5, Math.sin(angle) * data.speed * speedMult * 0.5);
       } else {
         enemy.setVelocity(0);
       }
@@ -261,14 +273,14 @@ export class EnemySpawner {
         case 'chase':
           if (dist < 800) {
             const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
-            enemy.setVelocity(Math.cos(angle) * data.speed, Math.sin(angle) * data.speed);
+            enemy.setVelocity(Math.cos(angle) * data.speed * speedMult, Math.sin(angle) * data.speed * speedMult);
           }
           break;
 
         case 'ranged':
           if (dist > 450) {
             const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
-            enemy.setVelocity(Math.cos(angle) * data.speed * 0.5, Math.sin(angle) * data.speed * 0.5);
+            enemy.setVelocity(Math.cos(angle) * data.speed * speedMult * 0.5, Math.sin(angle) * data.speed * speedMult * 0.5);
           } else {
             enemy.setVelocity(0);
           }
@@ -277,7 +289,7 @@ export class EnemySpawner {
         case 'charge':
           if (dist >= 300) {
             const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
-            enemy.setVelocity(Math.cos(angle) * data.speed, Math.sin(angle) * data.speed);
+            enemy.setVelocity(Math.cos(angle) * data.speed * speedMult, Math.sin(angle) * data.speed * speedMult);
           }
           break;
 
@@ -296,8 +308,8 @@ export class EnemySpawner {
         case 'circle':
           const angle = Phaser.Math.Angle.Between(enemy.x, enemy.y, this.player.x, this.player.y);
           enemy.setVelocity(
-            Math.cos(angle + 0.5) * data.speed,
-            Math.sin(angle + 0.5) * data.speed
+            Math.cos(angle + 0.5) * data.speed * speedMult,
+            Math.sin(angle + 0.5) * data.speed * speedMult
           );
           break;
       }
