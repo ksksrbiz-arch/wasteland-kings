@@ -545,6 +545,17 @@ export class GameScene extends Scene {
     const newHp = currentHp - dmg;
     e.setData('hp', newHp);
 
+    // Elemental synergy (poison/freeze/fire): the projectile carries the
+    // element (see WeaponSystem.fire), but nothing was ever transferring it
+    // onto the enemy here, so EnemySpawner's whole status-effect handling
+    // (DoT ticks, freeze slow) was dead code. Refresh the status on every
+    // hit so sustained fire keeps it up; it fades a couple seconds after.
+    const projElement = p.getData('element') as 'none' | 'poison' | 'freeze' | 'fire' | undefined;
+    if (projElement && projElement !== 'none') {
+      e.setData('element', projElement);
+      e.setData('elementTimer', 2500);
+    }
+
     e.setTint(0xFFFFFF);
     this.time.delayedCall(80, () => e.clearTint());
 

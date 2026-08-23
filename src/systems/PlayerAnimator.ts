@@ -6,6 +6,7 @@ export class PlayerAnimator {
 
   // State
   private facingRight = true;
+  private currentLean = 0;
   private recoilTween?: Phaser.Tweens.Tween;
   private idleTween?: Phaser.Tweens.Tween;
   private walkTween?: Phaser.Tweens.Tween;
@@ -17,6 +18,7 @@ export class PlayerAnimator {
   private readonly RECOIL_ROTATION = 12; // degrees
   private readonly RECOIL_DURATION = 90;
   private readonly HIT_SCALE_BUMP = 0.16; // temporary scale-up on hit
+  private readonly MAX_LEAN = 10; // degrees, banking into horizontal movement
 
   constructor(scene: Scene, player: Phaser.Physics.Arcade.Sprite) {
     this.scene = scene;
@@ -24,7 +26,7 @@ export class PlayerAnimator {
     this.startIdleBreathing();
   }
 
-  update(_delta: number, vx: number, vy: number, isDashing: boolean): void {
+  update(delta: number, vx: number, vy: number, isDashing: boolean): void {
     const isMoving = vx !== 0 || vy !== 0;
 
     // ── FACING ──
@@ -53,12 +55,32 @@ export class PlayerAnimator {
         this.startIdleBreathing();
       }
     }
+
+    // ── MOVEMENT LEAN ──
+    // Bank a few degrees into horizontal movement, smoothly blended, so
+    // starting/turning/stopping has some weight instead of the sprite
+    // staying perfectly upright the whole time. Skipped while a one-shot
+    // effect (recoil/hit/dash) owns the sprite's angle.
+    const oneShotActive =
+      (this.recoilTween && this.recoilTween.isPlaying()) ||
+      (this.hitTween && this.hitTween.isPlaying()) ||
+      (this.dashTween && this.dashTween.isPlaying()) ||
+      isDashing;
+    if (!oneShotActive) {
+      const targetLean = isMoving ? Phaser.Math.Clamp(vx, -1, 1) * this.MAX_LEAN : 0;
+      this.currentLean = Phaser.Math.Linear(this.currentLean, targetLean, Math.min(1, delta / 150));
+      this.player.angle = this.currentLean;
+    }
   }
 
   /** Stop any looping (idle/walk) tween so a one-shot effect can take over the sprite cleanly */
   private stopLoopingTweens(): void {
     if (this.idleTween && this.idleTween.isPlaying()) this.idleTween.stop();
     if (this.walkTween && this.walkTween.isPlaying()) this.walkTween.stop();
+    // A one-shot effect is about to drive player.angle directly; reset the
+    // lean blend so it resumes from 0 afterward instead of popping back to
+    // whatever lean was in effect when the effect interrupted it.
+    this.currentLean = 0;
   }
 
   private startWalkCycle(): void {
@@ -74,25 +96,25 @@ export class PlayerAnimator {
   }
 
   /** Triggered by WeaponSystem every time a weapon fires */
-  playRecoil(aimAngle: number): void {
+  playRecoil(_aimAngle: number): void {
     if (this.recoilTween && this.recoilTween.isPlaying()) {
       this.recoilTween.stop();
     }
     this.stopLoopingTweens();
 
-    // Rotate away from aim direction (opposite to where we're shooting)
-    const recoilAngle = Phaser.Math.RadToDeg(aimAngle) + 180;
-    const lean = Phaser.Math.Angle.ShortestBetween(
-      Phaser.Math.RadToDeg(aimAngle),
-      recoilAngle
-    );
-    const sign = this.facingRight ? -1 : 1;
+    // A small kickback tilt plus a squash/stretch punch. Kept to a few
+    // degrees and tied to facing (not the full aim angle) — the sprite only
+    // has a left/right pose, so a rotation driven by a 360° aim direction
+    // (previously computed via Angle.ShortestBetween(a, a+180), which is
+    // degenerate and always ~180° regardless of aim) would fight that and
+    // reads as the character snapping sideways instead of a subtle kick.
+    const sign = this.facingRight ? 1 : -1;
 
     this.recoilTween = this.scene.tweens.add({
       targets: this.player,
-      angle: lean * 0.3 * sign,
-      scaleX: this.BASE_SCALE * 0.85,
-      scaleY: this.BASE_SCALE * 1.1,
+      angle: this.RECOIL_ROTATION * sign,
+      scaleX: this.BASE_SCALE * 0.9,
+      scaleY: this.BASE_SCALE * 1.08,
       duration: this.RECOIL_DURATION,
       yoyo: true,
       hold: 30,
