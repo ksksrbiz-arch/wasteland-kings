@@ -1,5 +1,5 @@
 import { Scene } from 'phaser';
-import type { PlayerStats } from '../types';
+import type { PlayerStats, WeaponData, PassiveData } from '../types';
 
 export class HUD {
   private scene: Scene;
@@ -15,8 +15,9 @@ export class HUD {
   private waveText!: Phaser.GameObjects.Text;
   private timeText!: Phaser.GameObjects.Text;
   private levelText!: Phaser.GameObjects.Text;
-  private weaponIcons: Phaser.GameObjects.Container[] = [];
   private damageOverlay?: Phaser.GameObjects.Rectangle;
+  private loadoutContainer?: Phaser.GameObjects.Container;
+  private loadoutSignature = '';
 
   // Dash charges
   private dashContainer!: Phaser.GameObjects.Container;
@@ -295,8 +296,43 @@ export class HUD {
     });
   }
 
-  addWeaponIcon(weaponId: string, level: number): void {
-    // Implementation for showing weapon loadout in HUD
-    // Simplified for now
+  /**
+   * Renders the current weapon/passive loadout as a row of small chips along
+   * the bottom of the screen. Cheap to call often — it no-ops unless the
+   * loadout composition (ids + levels) actually changed, so it's safe to call
+   * after every pickup/upgrade instead of needing bespoke invalidation.
+   */
+  updateLoadout(weapons: WeaponData[], passives: PassiveData[]): void {
+    const signature = [
+      ...weapons.map(w => `w:${w.id}:${w.level}`),
+      ...passives.map(p => `p:${p.id}:${p.level}`)
+    ].join(',');
+    if (signature === this.loadoutSignature) return;
+    this.loadoutSignature = signature;
+
+    this.loadoutContainer?.destroy();
+    this.loadoutContainer = this.scene.add.container(640, 700).setScrollFactor(0).setDepth(50);
+
+    type Chip = { label: string; level: number; color: number };
+    const chips: Chip[] = [
+      ...weapons.map(w => ({ label: w.name.charAt(0).toUpperCase(), level: w.level, color: 0xFF6600 })),
+      ...passives.map(p => ({ label: p.name.charAt(0).toUpperCase(), level: p.level, color: 0x00AAAA }))
+    ];
+    if (chips.length === 0) return;
+
+    const chipW = 30;
+    const startX = -((chips.length - 1) * chipW) / 2;
+
+    chips.forEach((chip, i) => {
+      const x = startX + i * chipW;
+      const bg = this.scene.add.rectangle(x, 0, 26, 26, chip.color, 0.25).setStrokeStyle(1, chip.color, 0.9);
+      const label = this.scene.add.text(x, -3, chip.label, {
+        fontSize: '12px', fontFamily: 'Courier New', color: '#FFFFFF', fontStyle: 'bold'
+      }).setOrigin(0.5);
+      const lvl = this.scene.add.text(x, 9, `${chip.level}`, {
+        fontSize: '9px', fontFamily: 'Courier New', color: '#CCCCCC'
+      }).setOrigin(0.5);
+      this.loadoutContainer!.add([bg, label, lvl]);
+    });
   }
 }

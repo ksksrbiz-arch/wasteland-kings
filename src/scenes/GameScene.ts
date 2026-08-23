@@ -228,7 +228,7 @@ export class GameScene extends Scene {
 
     this.playerAnimator = new PlayerAnimator(this, this.player);
 
-    this.weaponSystem = new WeaponSystem(this, this.projectiles, this.player, (aimAngle) => {
+    this.weaponSystem = new WeaponSystem(this, this.projectiles, this.enemies, this.player, (aimAngle) => {
       this.playerAnimator.playRecoil(aimAngle);
     });
     this.enemySpawner = new EnemySpawner(this, this.enemies, this.player, this.enemyProjectiles);
@@ -241,6 +241,7 @@ export class GameScene extends Scene {
 
     const startWep = WEAPONS.find(w => w.id === this.character.startingWeapon);
     if (startWep) this.weapons.push({ ...startWep });
+    this.hud.updateLoadout(this.weapons, this.passives);
 
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.wasd = this.input.keyboard!.addKeys('W,S,A,D') as Record<string, Phaser.Input.Keyboard.Key>;
@@ -298,7 +299,7 @@ export class GameScene extends Scene {
 
     // Dash input
     if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
-      const dashed = this.dashSystem.dash(vx, vy);
+      const dashed = this.dashSystem.dash(vx, vy, this.playerStats.speed);
       if (dashed) {
         this.audioManager.dash();
         this.playerAnimator.playDashStart(vx || (this.player.flipX ? -1 : 1), vy);
@@ -454,6 +455,7 @@ export class GameScene extends Scene {
         this.scrap += (drop.value || 50);
         break;
     }
+    this.hud.updateLoadout(this.weapons, this.passives);
   }
 
   private createJoystick(): void {
@@ -760,6 +762,7 @@ export class GameScene extends Scene {
         this.saveManager.unlockAchievement('evolved');
       }
     }
+    this.hud.updateLoadout(this.weapons, this.passives);
   }
 
   private applyPassive(p: PassiveData): void {

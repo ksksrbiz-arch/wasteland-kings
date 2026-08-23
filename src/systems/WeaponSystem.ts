@@ -4,21 +4,33 @@ import type { WeaponData, PlayerStats } from '../types';
 export class WeaponSystem {
   private scene: Scene;
   private projectiles: Phaser.Physics.Arcade.Group;
+  private enemies: Phaser.Physics.Arcade.Group;
   private player: Phaser.Physics.Arcade.Sprite;
   private lastFire: Map<string, number> = new Map();
   private sawBlades: Phaser.GameObjects.Image[] = [];
   private teslaArcs: Phaser.GameObjects.Graphics[] = [];
   private onFireCallback?: (aimAngle: number) => void;
 
-  constructor(scene: Scene, projectiles: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite, onFire?: (aimAngle: number) => void) {
+  constructor(scene: Scene, projectiles: Phaser.Physics.Arcade.Group, enemies: Phaser.Physics.Arcade.Group, player: Phaser.Physics.Arcade.Sprite, onFire?: (aimAngle: number) => void) {
     this.scene = scene;
     this.projectiles = projectiles;
+    this.enemies = enemies;
     this.player = player;
     this.onFireCallback = onFire;
   }
 
+  /** Active enemies, read straight from the enemies group instead of scanning every physics body in the world */
+  private getActiveEnemies(): Phaser.Physics.Arcade.Sprite[] {
+    return (this.enemies.getChildren() as Phaser.Physics.Arcade.Sprite[]).filter(e => e.active);
+  }
+
   update(time: number, _delta: number, weapons: WeaponData[], stats: PlayerStats, passives: any[]): void {
     for (const weapon of weapons) {
+      // Orbit weapons (saw/maelstrom) deal continuous contact damage via updateSaws
+      // every frame — they have no discrete "fire" moment, so skip the fire cycle
+      // entirely rather than triggering recoil/audio for a shot that never happens.
+      if (weapon.id === 'saw' || weapon.id === 'maelstrom') continue;
+
       const last = this.lastFire.get(weapon.id) || 0;
       const interval = weapon.fireRate / stats.fireRate;
 
@@ -29,14 +41,10 @@ export class WeaponSystem {
     }
 
     this.updateSaws(time, weapons);
-    this.updateTesla(time, weapons, stats);
   }
 
   private fire(weapon: WeaponData, stats: PlayerStats, passives: any[]): void {
-    const enemies = this.scene.physics.world.bodies.entries
-      .filter((b: any) => b.gameObject?.getData?.('enemyData'))
-      .map((b: any) => b.gameObject as Phaser.Physics.Arcade.Sprite)
-      .filter((e: Phaser.Physics.Arcade.Sprite) => e.active);
+    const enemies = this.getActiveEnemies();
 
     if (enemies.length === 0) return;
 
@@ -72,6 +80,7 @@ export class WeaponSystem {
         break;
       case 'tesla':
       case 'stormcaller':
+        this.fireTesla(weapon, enemies, damage);
         break;
       case 'flame':
       case 'inferno':
@@ -151,7 +160,9 @@ export class WeaponSystem {
   }
 
   private fireFlame(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number, element: 'none' | 'poison' | 'freeze' | 'fire'): void {
-    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, enemies[0].x, enemies[0].y);
+    const target = this.getNearestEnemy(enemies);
+    if (!target) return;
+    const angle = Phaser.Math.Angle.Between(this.player.x, this.player.y, target.x, target.y);
     const arc = 0.5;
     const count = 5;
 
@@ -214,6 +225,8 @@ export class WeaponSystem {
       this.sawBlades.push(blade);
     }
 
+    const enemies = this.getActiveEnemies();
+
     this.sawBlades.forEach((blade, i) => {
       const angle = (time / 1000 * speed) + (i / count) * Math.PI * 2;
       blade.x = this.player.x + Math.cos(angle) * radius;
@@ -221,12 +234,7 @@ export class WeaponSystem {
       blade.rotation = time / 200;
       blade.setVisible(true);
 
-      const enemies = this.scene.physics.world.bodies.entries
-        .filter((b: any) => b.gameObject?.getData?.('enemyData'))
-        .map((b: any) => b.gameObject as Phaser.Physics.Arcade.Sprite);
-
       for (const enemy of enemies) {
-        if (!enemy.active) continue;
         const dist = Phaser.Math.Distance.Between(blade.x, blade.y, enemy.x, enemy.y);
         if (dist < 30) {
           const currentHp = enemy.getData('hp') as number;
@@ -239,33 +247,28 @@ export class WeaponSystem {
     });
   }
 
-  private updateTesla(time: number, weapons: WeaponData[], stats: PlayerStats): void {
-    const teslaWeapon = weapons.find(w => w.id === 'tesla' || w.id === 'stormcaller');
-    if (!teslaWeapon) {
-      this.teslaArcs.forEach(a => a.destroy());
-      this.teslaArcs = [];
-      return;
-    }
+  /**
+   * Tesla/Stormcaller chain lightning. Called from fire() so it respects the
+   * weapon's fireRate like every other weapon — it previously ran unthrottled
+   * once per rendered frame (updateTesla was invoked from update() directly),
+   * which dealt its damage up to ~60x/sec instead of ~1.25x/sec (fireRate
+   * 800ms) and spawned a fresh Graphics object every frame.
+   */
+  private fireTesla(weapon: WeaponData, enemies: Phaser.Physics.Arcade.Sprite[], damage: number): void {
+    const range = weapon.range;
+    const chains = weapon.pierce;
 
-    const enemies = this.scene.physics.world.bodies.entries
-      .filter((b: any) => b.gameObject?.getData?.('enemyData'))
-      .map((b: any) => b.gameObject as Phaser.Physics.Arcade.Sprite)
-      .filter((e: Phaser.Physics.Arcade.Sprite) => e.active)
-      .sort((a: Phaser.Physics.Arcade.Sprite, b: Phaser.Physics.Arcade.Sprite) =>
-        Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y) -
-        Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y)
-      );
-
-    const range = teslaWeapon.range;
-    const chains = teslaWeapon.pierce;
-    const damage = teslaWeapon.damage * stats.damage;
+    const sorted = [...enemies].sort((a, b) =>
+      Phaser.Math.Distance.Between(this.player.x, this.player.y, a.x, a.y) -
+      Phaser.Math.Distance.Between(this.player.x, this.player.y, b.x, b.y)
+    );
 
     this.teslaArcs.forEach(a => a.destroy());
     this.teslaArcs = [];
 
-    if (enemies.length === 0) return;
+    if (sorted.length === 0) return;
 
-    const target = enemies[0];
+    const target = sorted[0];
     const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y);
     if (dist > range) return;
 
@@ -281,8 +284,8 @@ export class WeaponSystem {
     }
 
     let lastTarget = target;
-    for (let i = 1; i < chains && i < enemies.length; i++) {
-      const next = enemies[i];
+    for (let i = 1; i < chains && i < sorted.length; i++) {
+      const next = sorted[i];
       const d = Phaser.Math.Distance.Between(lastTarget.x, lastTarget.y, next.x, next.y);
       if (d > range * 0.7) break;
 

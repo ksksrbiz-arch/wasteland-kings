@@ -75,7 +75,7 @@ export class DashSystem {
     return this.isDashing;
   }
 
-  dash(directionX: number, directionY: number): boolean {
+  dash(directionX: number, directionY: number, baseSpeed: number): boolean {
     if (!this.canDash()) return false;
 
     // Consume a charge
@@ -90,8 +90,11 @@ export class DashSystem {
     const dx = directionX / len;
     const dy = directionY / len;
 
-    // Dash velocity
-    const speed = (this.player.body?.velocity?.length?.() || 160) * this.dashSpeedMult;
+    // Dash velocity — derived from the player's move-speed stat, not the
+    // current instantaneous body velocity. Movement now eases in/out (see
+    // GameScene), so velocity.length() can be small-but-nonzero right after
+    // stopping; using it here would silently produce a near-zero "dash".
+    const speed = baseSpeed * this.dashSpeedMult;
     this.player.setVelocity(dx * speed, dy * speed);
 
     // Visual: high-contrast afterimages
